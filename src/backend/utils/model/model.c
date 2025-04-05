@@ -527,8 +527,10 @@ TupleDesc GetPredictModelResultDesc(PredictModelStmt *node){
 
 	elog(WARNING, "attnum %d %s", attCount, "ML*****");
 
-	TupleDescInitEntry(tupdesc, (AttrNumber)attCount, "ml result",
+	// TupleDescInitEntry(tupdesc, (AttrNumber)attCount, "ml result",
+	TupleDescInitBuiltinEntry(tupdesc, (AttrNumber)attCount, "ml result",
 			TEXTOID, -1, 0);
+
 
 	index_endscan(scan);
 	ExecDropSingleTupleTableSlot(slot);
@@ -777,11 +779,16 @@ PredictModelExecuteStmt(CreateModelStmt *stmt, DestReceiver *dest)
 		Form_pg_attribute record;
 		record = (Form_pg_attribute) GETSTRUCT(tup);
 		if (record->attnum < 0) continue;
+		if (record->attisdropped)
+		{
+			table_natts --;
+			continue;
+		}
 		TupleDescInitEntry(tupdesc, (AttrNumber) record->attnum,
 			NameStr(record->attname),
 			record->atttypid, -1, 0);
 	}
-	TupleDescInitEntry(tupdesc, (AttrNumber) table_natts+1, "class", TEXTOID, -1, 0);
+	TupleDescInitBuiltinEntry(tupdesc, (AttrNumber) table_natts+1, "class", TEXTOID, -1, 0);
 
 	systable_endscan(sscan);
 	table_close(rel, AccessShareLock);

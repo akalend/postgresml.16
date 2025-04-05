@@ -818,8 +818,8 @@ configure:11826: $? = 0
 configure:11835: result: yes
 configure:11846: checking for library containing setproctitle
 configure:11877: gcc -o conftest -Wall -Wmissing-prototypes -Wpointer-arith -Wdeclaration-after-statement -Werror=vla -Wendif-labels -Wmissing-format-attribute -Wimplicit-fallthrough=3 -Wcast-function-type -Wshadow=compatible-local -Wformat-security -fno-strict-aliasing -fwrapv -fexcess-precision=standard -Wno-format-truncation -Wno-stringop-truncation -g -O2  -D_GNU_SOURCE    conftest.c -lm  >&5
-/usr/bin/ld: /tmp/ccg2fzJN.o: in function `main':
-/home/ak/projects/postgres.ml/conftest.c:49:(.text.startup+0xb): undefined reference to `setproctitle'
+/usr/bin/ld: /tmp/ccGdiCV3.o: in function `main':
+/home/ak/projects/postgresml.16/conftest.c:49:(.text.startup+0xb): undefined reference to `setproctitle'
 collect2: error: ld returned 1 exit status
 configure:11877: $? = 1
 configure: failed program was:
@@ -876,8 +876,8 @@ configure: failed program was:
 |   return 0;
 | }
 configure:11877: gcc -o conftest -Wall -Wmissing-prototypes -Wpointer-arith -Wdeclaration-after-statement -Werror=vla -Wendif-labels -Wmissing-format-attribute -Wimplicit-fallthrough=3 -Wcast-function-type -Wshadow=compatible-local -Wformat-security -fno-strict-aliasing -fwrapv -fexcess-precision=standard -Wno-format-truncation -Wno-stringop-truncation -g -O2  -D_GNU_SOURCE    conftest.c -lutil  -lm  >&5
-/usr/bin/ld: /tmp/ccC19iuy.o: in function `main':
-/home/ak/projects/postgres.ml/conftest.c:49:(.text.startup+0xb): undefined reference to `setproctitle'
+/usr/bin/ld: /tmp/ccOL4ncw.o: in function `main':
+/home/ak/projects/postgresml.16/conftest.c:49:(.text.startup+0xb): undefined reference to `setproctitle'
 collect2: error: ld returned 1 exit status
 configure:11877: $? = 1
 configure: failed program was:
@@ -3242,8 +3242,8 @@ configure:15712: $? = 0
 configure:15712: result: yes
 configure:15712: checking for copyfile
 configure:15712: gcc -o conftest -Wall -Wmissing-prototypes -Wpointer-arith -Wdeclaration-after-statement -Werror=vla -Wendif-labels -Wmissing-format-attribute -Wimplicit-fallthrough=3 -Wcast-function-type -Wshadow=compatible-local -Wformat-security -fno-strict-aliasing -fwrapv -fexcess-precision=standard -Wno-format-truncation -Wno-stringop-truncation -g -O2  -D_GNU_SOURCE    conftest.c -lz  -lm  >&5
-/usr/bin/ld: /tmp/ccS9CJLl.o: in function `main':
-/home/ak/projects/postgres.ml/conftest.c:108:(.text.startup+0xb): undefined reference to `copyfile'
+/usr/bin/ld: /tmp/cclxFz1B.o: in function `main':
+/home/ak/projects/postgresml.16/conftest.c:108:(.text.startup+0xb): undefined reference to `copyfile'
 collect2: error: ld returned 1 exit status
 configure:15712: $? = 1
 configure: failed program was:
@@ -3365,8 +3365,8 @@ configure:15712: $? = 0
 configure:15712: result: yes
 configure:15712: checking for getpeerucred
 configure:15712: gcc -o conftest -Wall -Wmissing-prototypes -Wpointer-arith -Wdeclaration-after-statement -Werror=vla -Wendif-labels -Wmissing-format-attribute -Wimplicit-fallthrough=3 -Wcast-function-type -Wshadow=compatible-local -Wformat-security -fno-strict-aliasing -fwrapv -fexcess-precision=standard -Wno-format-truncation -Wno-stringop-truncation -g -O2  -D_GNU_SOURCE    conftest.c -lz  -lm  >&5
-/usr/bin/ld: /tmp/ccKoBboB.o: in function `main':
-/home/ak/projects/postgres.ml/conftest.c:109:(.text.startup+0xb): undefined reference to `getpeerucred'
+/usr/bin/ld: /tmp/cchjLFZV.o: in function `main':
+/home/ak/projects/postgresml.16/conftest.c:109:(.text.startup+0xb): undefined reference to `getpeerucred'
 collect2: error: ld returned 1 exit status
 configure:15712: $? = 1
 configure: failed program was:
@@ -3489,8 +3489,8 @@ configure:15712: $? = 0
 configure:15712: result: yes
 configure:15712: checking for kqueue
 configure:15712: gcc -o conftest -Wall -Wmissing-prototypes -Wpointer-arith -Wdeclaration-after-statement -Werror=vla -Wendif-labels -Wmissing-format-attribute -Wimplicit-fallthrough=3 -Wcast-function-type -Wshadow=compatible-local -Wformat-security -fno-strict-aliasing -fwrapv -fexcess-precision=standard -Wno-format-truncation -Wno-stringop-truncation -g -O2  -D_GNU_SOURCE    conftest.c -lz  -lm  >&5
-/usr/bin/ld: /tmp/ccGSgKyE.o: in function `main':
-/home/ak/projects/postgres.ml/conftest.c:110:(.text.startup+0xb): undefined reference to `kqueue'
+/usr/bin/ld: /tmp/ccBOWs1E.o: in function `main':
+/home/ak/projects/postgresml.16/conftest.c:110:(.text.startup+0xb): undefined reference to `kqueue'
 collect2: error: ld returned 1 exit status
 configure:15712: $? = 1
 configure: failed program was:
@@ -3610,8 +3610,8 @@ configure: failed program was:
 configure:15712: result: no
 configure:15712: checking for mbstowcs_l
 configure:15712: gcc -o conftest -Wall -Wmissing-prototypes -Wpointer-arith -Wdeclaration-after-statement -Werror=vla -Wendif-labels -Wmissing-format-attribute -Wimplicit-fallthrough=3 -Wcast-function-type -Wshadow=compatible-local -Wformat-security -fno-strict-aliasing -fwrapv -fexcess-precision=standard -Wno-format-truncation -Wno-stringop-truncation -g -O2  -D_GNU_SOURCE    conftest.c -lz  -lm  >&5
-/usr/bin/ld: /tmp/cciZ8Y6n.o: in function `main':
-/home/ak/projects/postgres.ml/conftest.c:110:(.text.startup+0xb): undefined reference to `mbstowcs_l'
+/usr/bin/ld: /tmp/ccyClWlZ.o: in function `main':
+/home/ak/projects/postgresml.16/conftest.c:110:(.text.startup+0xb): undefined reference to `mbstowcs_l'
 collect2: error: ld returned 1 exit status
 configure:15712: $? = 1
 configure: failed program was:
@@ -3731,8 +3731,8 @@ configure: failed program was:
 configure:15712: result: no
 configure:15712: checking for memset_s
 configure:15712: gcc -o conftest -Wall -Wmissing-prototypes -Wpointer-arith -Wdeclaration-after-statement -Werror=vla -Wendif-labels -Wmissing-format-attribute -Wimplicit-fallthrough=3 -Wcast-function-type -Wshadow=compatible-local -Wformat-security -fno-strict-aliasing -fwrapv -fexcess-precision=standard -Wno-format-truncation -Wno-stringop-truncation -g -O2  -D_GNU_SOURCE    conftest.c -lz  -lm  >&5
-/usr/bin/ld: /tmp/ccWwph5w.o: in function `main':
-/home/ak/projects/postgres.ml/conftest.c:110:(.text.startup+0xb): undefined reference to `memset_s'
+/usr/bin/ld: /tmp/ccFLPGJW.o: in function `main':
+/home/ak/projects/postgresml.16/conftest.c:110:(.text.startup+0xb): undefined reference to `memset_s'
 collect2: error: ld returned 1 exit status
 configure:15712: $? = 1
 configure: failed program was:
@@ -3860,8 +3860,8 @@ configure:15712: $? = 0
 configure:15712: result: yes
 configure:15712: checking for pthread_is_threaded_np
 configure:15712: gcc -o conftest -Wall -Wmissing-prototypes -Wpointer-arith -Wdeclaration-after-statement -Werror=vla -Wendif-labels -Wmissing-format-attribute -Wimplicit-fallthrough=3 -Wcast-function-type -Wshadow=compatible-local -Wformat-security -fno-strict-aliasing -fwrapv -fexcess-precision=standard -Wno-format-truncation -Wno-stringop-truncation -g -O2  -D_GNU_SOURCE    conftest.c -lz  -lm  >&5
-/usr/bin/ld: /tmp/ccEcVzEu.o: in function `main':
-/home/ak/projects/postgres.ml/conftest.c:112:(.text.startup+0xb): undefined reference to `pthread_is_threaded_np'
+/usr/bin/ld: /tmp/ccCFIium.o: in function `main':
+/home/ak/projects/postgresml.16/conftest.c:112:(.text.startup+0xb): undefined reference to `pthread_is_threaded_np'
 collect2: error: ld returned 1 exit status
 configure:15712: $? = 1
 configure: failed program was:
@@ -3983,8 +3983,8 @@ configure: failed program was:
 configure:15712: result: no
 configure:15712: checking for setproctitle
 configure:15712: gcc -o conftest -Wall -Wmissing-prototypes -Wpointer-arith -Wdeclaration-after-statement -Werror=vla -Wendif-labels -Wmissing-format-attribute -Wimplicit-fallthrough=3 -Wcast-function-type -Wshadow=compatible-local -Wformat-security -fno-strict-aliasing -fwrapv -fexcess-precision=standard -Wno-format-truncation -Wno-stringop-truncation -g -O2  -D_GNU_SOURCE    conftest.c -lz  -lm  >&5
-/usr/bin/ld: /tmp/cc9HXQS1.o: in function `main':
-/home/ak/projects/postgres.ml/conftest.c:112:(.text.startup+0xb): undefined reference to `setproctitle'
+/usr/bin/ld: /tmp/ccpZX3SL.o: in function `main':
+/home/ak/projects/postgresml.16/conftest.c:112:(.text.startup+0xb): undefined reference to `setproctitle'
 collect2: error: ld returned 1 exit status
 configure:15712: $? = 1
 configure: failed program was:
@@ -4106,8 +4106,8 @@ configure: failed program was:
 configure:15712: result: no
 configure:15712: checking for setproctitle_fast
 configure:15712: gcc -o conftest -Wall -Wmissing-prototypes -Wpointer-arith -Wdeclaration-after-statement -Werror=vla -Wendif-labels -Wmissing-format-attribute -Wimplicit-fallthrough=3 -Wcast-function-type -Wshadow=compatible-local -Wformat-security -fno-strict-aliasing -fwrapv -fexcess-precision=standard -Wno-format-truncation -Wno-stringop-truncation -g -O2  -D_GNU_SOURCE    conftest.c -lz  -lm  >&5
-/usr/bin/ld: /tmp/cc8fvuqD.o: in function `main':
-/home/ak/projects/postgres.ml/conftest.c:112:(.text.startup+0xb): undefined reference to `setproctitle_fast'
+/usr/bin/ld: /tmp/ccL9rjNa.o: in function `main':
+/home/ak/projects/postgresml.16/conftest.c:112:(.text.startup+0xb): undefined reference to `setproctitle_fast'
 collect2: error: ld returned 1 exit status
 configure:15712: $? = 1
 configure: failed program was:
@@ -4249,8 +4249,8 @@ configure:15712: $? = 0
 configure:15712: result: yes
 configure:15712: checking for wcstombs_l
 configure:15712: gcc -o conftest -Wall -Wmissing-prototypes -Wpointer-arith -Wdeclaration-after-statement -Werror=vla -Wendif-labels -Wmissing-format-attribute -Wimplicit-fallthrough=3 -Wcast-function-type -Wshadow=compatible-local -Wformat-security -fno-strict-aliasing -fwrapv -fexcess-precision=standard -Wno-format-truncation -Wno-stringop-truncation -g -O2  -D_GNU_SOURCE    conftest.c -lz  -lm  >&5
-/usr/bin/ld: /tmp/cconiMGI.o: in function `main':
-/home/ak/projects/postgres.ml/conftest.c:117:(.text.startup+0xb): undefined reference to `wcstombs_l'
+/usr/bin/ld: /tmp/ccPhyXbh.o: in function `main':
+/home/ak/projects/postgresml.16/conftest.c:117:(.text.startup+0xb): undefined reference to `wcstombs_l'
 collect2: error: ld returned 1 exit status
 configure:15712: $? = 1
 configure: failed program was:
@@ -4706,8 +4706,8 @@ configure:16301: $? = 0
 configure:16301: result: yes
 configure:16314: checking for getpeereid
 configure:16314: gcc -o conftest -Wall -Wmissing-prototypes -Wpointer-arith -Wdeclaration-after-statement -Werror=vla -Wendif-labels -Wmissing-format-attribute -Wimplicit-fallthrough=3 -Wcast-function-type -Wshadow=compatible-local -Wformat-security -fno-strict-aliasing -fwrapv -fexcess-precision=standard -Wno-format-truncation -Wno-stringop-truncation -g -O2  -D_GNU_SOURCE    conftest.c -lz  -lm  >&5
-/usr/bin/ld: /tmp/ccpKCNzm.o: in function `main':
-/home/ak/projects/postgres.ml/conftest.c:136:(.text.startup+0xb): undefined reference to `getpeereid'
+/usr/bin/ld: /tmp/ccS7xkjQ.o: in function `main':
+/home/ak/projects/postgresml.16/conftest.c:136:(.text.startup+0xb): undefined reference to `getpeereid'
 collect2: error: ld returned 1 exit status
 configure:16314: $? = 1
 configure: failed program was:
@@ -4902,9 +4902,9 @@ configure:16640: $? = 0
 configure:16648: result: yes
 configure:16656: checking for optreset
 configure:16672: gcc -o conftest -Wall -Wmissing-prototypes -Wpointer-arith -Wdeclaration-after-statement -Werror=vla -Wendif-labels -Wmissing-format-attribute -Wimplicit-fallthrough=3 -Wcast-function-type -Wshadow=compatible-local -Wformat-security -fno-strict-aliasing -fwrapv -fexcess-precision=standard -Wno-format-truncation -Wno-stringop-truncation -g -O2  -D_GNU_SOURCE    conftest.c -lz  -lm  >&5
-/usr/bin/ld: /tmp/ccRZkV92.o: warning: relocation against `optreset' in read-only section `.text.startup'
-/usr/bin/ld: /tmp/ccRZkV92.o: in function `main':
-/home/ak/projects/postgres.ml/conftest.c:115:(.text.startup+0x6): undefined reference to `optreset'
+/usr/bin/ld: /tmp/ccO32nWE.o: warning: relocation against `optreset' in read-only section `.text.startup'
+/usr/bin/ld: /tmp/ccO32nWE.o: in function `main':
+/home/ak/projects/postgresml.16/conftest.c:115:(.text.startup+0x6): undefined reference to `optreset'
 /usr/bin/ld: warning: creating DT_TEXTREL in a PIE
 collect2: error: ld returned 1 exit status
 configure:16672: $? = 1
@@ -6675,6 +6675,7 @@ on akalend
 config.status:1097: creating GNUmakefile
 config.status:1097: creating src/Makefile.global
 config.status:1097: creating src/include/pg_config.h
+config.status:1278: src/include/pg_config.h is unchanged
 config.status:1097: creating src/include/pg_config_ext.h
 config.status:1278: src/include/pg_config_ext.h is unchanged
 config.status:1097: creating src/interfaces/ecpg/include/ecpg_config.h
