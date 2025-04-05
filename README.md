@@ -1,8 +1,10 @@
 # Machine learning module in PostgresSQL  
-![pg_ml](/docs/pg_ml.png)
+![pg_ml](/doc/pg_ml.png)
 
 
-The libcatboostmodel must be 1.2.7 version.
+This repository is fork from postgres original repository (https://github.com/postgres/postgres)  version 16.4 with ML syntax. More inform in the https://github.com/akalend/postgres.ml/pull/1
+
+For installation we have the libcatboostmodel.so  1.2.7 version.
 
 
 ## Prediction
@@ -20,44 +22,33 @@ The prediction has so far been made  for:
 
  Variable $PG_HOME is the postgres home directory. Default is:  PG_HOME=/usr/local/bin
 
-- export PG_HOME=/usr/local/pgsql    //where is main postgres folder
-- export LD_LIBRARY_PATH=/usr/local/lib
+```
+export PG_HOME=/usr/local/pgsql    //where is main postgres folder
+export LD_LIBRARY_PATH=/usr/local/lib
 
-- wget https://github.com/catboost/catboost/releases/download/v1.2.7/libcatboostmodel.so
+wget https://github.com/catboost/catboost/releases/download/v1.2.7/libcatboostmodel.so
+cp catboostmodel.so $LD_LIBRARY_PATH/
 
-- cp catboostmodel.so $LD_LIBRARY_PATH/
+git clone https://github.com/akalend/postgresml.16.git
+cd postgresml.16
+./configure --with-python
+make && sudo make install
 
-- git clone https://github.com/akalend/postgresml.16.git
+cd $PG_HOME
+sudo mkdir data 
+sudo chown postgres data
+cd bin && sudo pipenv install
 
-- cd postgresml.16
+sudo -u postgres bash
+pipenv shell
+pip install catboost pandas
 
-- ./configure --with-python
+export PATH=$PATH:/usr/local/pgsql/bin
+psql -c 'CREATE DATABASE test'
+psql -c 'CREATE LANGUAGE python3u' test 
+psql -c 'CREATE EXTENSION catboost' test
 
-- make && sudo make install
-
-- cd $PG_HOME
-
-- sudo mkdir data 
-
-- sudo chown postgres data
-
-- cd bin && sudo pipenv install
-
-- sudo -u postgres bash
-
-- pipenv shell
-
-- pip install catboost pandas
-
-- export PATH=$PATH:/usr/local/pgsql/bin
-
-- psql -c 'CREATE DATABASE test'
-
-- psql -c 'CREATE LANGUAGE python3u' test 
-
-- psql -c 'CREATE EXTENSION catboost' test
-
-- psql test
+psql test
 
 ```
 
