@@ -1,5 +1,5 @@
 # Machine learning module in PostgresSQL  
-![pg_ml](pg_ml.png)
+![pg_ml](doc/pg_ml.png)
 
 
 The libcatboostmodel must be 1.2.7 version.
