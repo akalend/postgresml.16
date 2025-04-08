@@ -668,11 +668,12 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
  */
 %type <node>	CreateModelStmt
 %type <node>	PredictModelStmt
+%type <node>	LoadModelStmt
+%type <node>	DropModelStmt
 %type <node>	OptModelElement 
 %type <list>	OptModelElements OptModelElementList
 %type <node>	StrModelElement
 %type <list>	StrModelElements StrModelElementList
-%type <node>	LoadModelStmt
 
 /*
  * Non-keyword token types.  These are hard-wired into the "flex" lexer.
@@ -1058,6 +1059,7 @@ stmt:
 			| DiscardStmt
 			| DoStmt
 			| DropCastStmt
+			| DropModelStmt
 			| DropOpClassStmt
 			| DropOpFamilyStmt
 			| DropOwnedStmt
@@ -6528,6 +6530,24 @@ LoadModelStmt:
 			$$ = (Node *) n;
 		}
 	;
+
+/*****************************************************************************
+ *
+ *		QUERY :
+ *				DROP MODEL name 
+ *
+ *****************************************************************************/
+DropModelStmt:
+	DROP MODEL name
+		{
+			DropModelStmt *n = makeNode(DropModelStmt);
+			n->objectType = OBJECT_MODEL;
+			n->modelname = $3;
+			$$ = (Node *) n;
+		}
+	;
+
+
 
 /*****************************************************************************
  *

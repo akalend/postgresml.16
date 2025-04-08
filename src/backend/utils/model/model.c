@@ -475,7 +475,7 @@ TupleDesc GetPredictModelResultDesc(PredictModelStmt *node){
 
 	attCount = form->relnatts;
 	slot = table_slot_create(rel, NULL);
-	//  check deleted fields
+	//  check fields as deleted
 	while (index_getnext_slot(scan, ForwardScanDirection, slot))
 	{
 		Form_pg_attribute record;
@@ -483,12 +483,9 @@ TupleDesc GetPredictModelResultDesc(PredictModelStmt *node){
 		tup = ExecFetchSlotHeapTuple(slot, false, &should_free);
 		record = (Form_pg_attribute) GETSTRUCT(tup);
 
-		if (record->atttypid == 0)
+		if (record->attisdropped == 0)
 		{
-			// deleting attributes
 			attCount --;
-			elog(WARNING, "deleted %d %s attnum=%d", record->attnum, NameStr(record->attname), attCount);
-
 			continue;
 		}
 	}
@@ -498,7 +495,6 @@ TupleDesc GetPredictModelResultDesc(PredictModelStmt *node){
 	ExecDropSingleTupleTableSlot(slot);
 
 	tupdesc = CreateTemplateTupleDesc(attCount);
-	elog(WARNING, "CreateTemplateTupleDesc coun=%d", attCount );
 	idxrel = index_open(AttributeRelidNumIndexId, AccessShareLock);
 	scan = index_beginscan(rel, idxrel, GetTransactionSnapshot(), 1, 0);
 
@@ -520,15 +516,11 @@ TupleDesc GetPredictModelResultDesc(PredictModelStmt *node){
 		if (record->attnum < 0) continue;
 		if (record->atttypid == 0) continue;
 
-		elog(WARNING, "attnum %d %s", record->attnum, NameStr(record->attname));
-		TupleDescInitEntry(tupdesc, (AttrNumber) record->attnum, NameStr(record->attname),
-			record->atttypid, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) record->attnum, 
+			NameStr(record->attname), record->atttypid, -1, 0);
 	}
 
-	elog(WARNING, "attnum %d %s", attCount, "ML*****");
-
-	// TupleDescInitEntry(tupdesc, (AttrNumber)attCount, "ml result",
-	TupleDescInitBuiltinEntry(tupdesc, (AttrNumber)attCount, "ml result",
+	TupleDescInitEntry(tupdesc, (AttrNumber)attCount, "ml_result",
 			TEXTOID, -1, 0);
 
 
@@ -674,7 +666,6 @@ CreatePredictInputData(TupleDesc tupdesc, int32 count, int32* arrTypes, Datum *v
 		if (arrTypes[i] >= 1000)
 		{
 			float_id = arrTypes[i] - 1000;
-			// elog(WARNING, "field[%d] oid=%d", i,tupdesc->attrs[i].atttypid);
 			switch (tupdesc->attrs[i].atttypid)
 			{
 		case FLOAT4OID:
@@ -819,7 +810,6 @@ PredictModelExecuteStmt(CreateModelStmt *stmt, DestReceiver *dest)
 	/* prepare for projection of tuples */
 	tstate = begin_tup_output_tupdesc(dest, tupdesc, &TTSOpsVirtual);
 
-	// elog(WARNING, "table oid=%d atts=%d", PredictTableOid, form->relnatts);
 	rel = table_open(PredictTableOid, AccessShareLock);
 	scan = table_beginscan(rel, GetLatestSnapshot(), 0, NULL);
 
@@ -965,7 +955,7 @@ LoadModelFromFileAndSaveToMetadata(const char* tmp_name, char* modelname,
 	if (rc)
 	{
 		const char * errmsg = strerror(errno);
-		elog(ERROR, "Temporaly model file \"%s\" not found\n%s", tmp_name,
+		elog(ERROR, "Model file \"%s\" not found\n%s", tmp_name,
 					errmsg);
 	}
 
@@ -1494,4 +1484,77 @@ read_whole_file(const char *filename, int *length)
 
 	buf[*length] = '\0';
 	return buf;
+}
+
+/*
+ * Drop model from metadata
+ */
+void
+DropModelExecuteStmt(DropModelStmt *stmt)
+{
+	Relation rel, idxrel;
+	ScanKeyData skey[1];
+	IndexScanDesc scan;
+	NameData name_data;
+	TupleTableSlot* slot;
+	Datum  *values;
+	bool   *nulls;
+	TupleDesc tupdesc;
+	bool found = false;
+
+	if (RecoveryInProgress())
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_WITH_CHECK_OPTION_VIOLATION),
+				 errmsg("DROP statement accepted only master, it is replication"),
+				 errhint("You might need create the model in master")));
+	}
+
+	namestrcpy(&name_data, stmt->modelname);
+	
+	
+	if (MetadataTableOid == InvalidOid)
+	{
+			MetadataTableOid  = get_relname_relid(ML_MODEL_METADATA, PG_PUBLIC_NAMESPACE);
+			MetadataTableIdxOid = get_relname_relid(ML_MODEL_METADATA_IDX, PG_PUBLIC_NAMESPACE);
+	}
+
+	values = (Datum*)palloc0( sizeof(Datum) * Natts_model);
+	nulls = (bool *) palloc0(sizeof(bool) * Natts_model);
+	tupdesc = GetMlModelTableDesc();
+
+	rel = table_open(MetadataTableOid, RowExclusiveLock);
+	idxrel = index_open(MetadataTableIdxOid, AccessShareLock);
+
+	scan = index_beginscan(rel, idxrel, GetTransactionSnapshot(), 1 /* nkeys */, 0 /* norderbys */);
+
+	ScanKeyInit(&skey[0],
+				Anum_ml_name ,
+				BTGreaterEqualStrategyNumber, F_NAMEEQ,
+				NameGetDatum(&name_data));
+
+	index_rescan(scan, skey, 1, NULL /* orderbys */, 0 /* norderbys */);
+
+	slot = table_slot_create(rel, NULL);
+	while (index_getnext_slot(scan, ForwardScanDirection, slot))
+	{
+		HeapTuple tup;
+		bool should_free;
+	
+		tup = ExecFetchSlotHeapTuple(slot, false, &should_free);
+
+		heap_deform_tuple(tup,  tupdesc, values, nulls);
+		if(should_free) heap_freetuple(tup);
+		CatalogTupleDelete(rel, &tup->t_self);		
+		found = true;
+		break;
+	}
+
+	index_endscan(scan);
+	ExecDropSingleTupleTableSlot(slot);
+	index_close(idxrel, AccessShareLock);
+	table_close(rel, RowExclusiveLock);
+
+	if (!found)
+		elog(ERROR, "model %s not found", stmt->modelname);
 }

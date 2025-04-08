@@ -325,6 +325,7 @@ ClassifyUtilityCommandAsReadOnly(Node *parsetree)
 		case T_CreateModelStmt:
 		case T_PredictModelStmt:
 		case T_LoadModelStmt:
+		case T_DropModelStmt:
 			{
 				/*
 				 * These commands don't modify any data and are safe to run in
@@ -1092,6 +1093,12 @@ standard_ProcessUtility(PlannedStmt *pstmt,
 			{
 				LoadModelStmt *stmt = (LoadModelStmt*) parsetree;
 				LoadModelExecuteStmt(stmt);
+				break;
+			}
+		case T_DropModelStmt:
+			{
+				DropModelStmt *stmt = (DropModelStmt*) parsetree;
+				DropModelExecuteStmt(stmt);
 				break;
 			}
 
@@ -2095,6 +2102,7 @@ UtilityReturnsTuples(Node *parsetree)
 			return true;
 
 		case T_LoadModelStmt:
+		case T_DropModelStmt:
 			return false;
 
 
@@ -3276,6 +3284,9 @@ CreateCommandTag(Node *parsetree)
 			break;
 		case T_LoadModelStmt:
 			tag = CMDTAG_LOAD_MODEL;
+			break;
+		case T_DropModelStmt:
+			tag = CMDTAG_DROP_MODEL;
 			break;
 
 		default:
