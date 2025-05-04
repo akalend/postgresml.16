@@ -4066,10 +4066,11 @@ typedef struct CreateModelStmt
 {
 	NodeTag			type;
 	ObjectType		objectType;		/* OBJECT_FUNCTION, OBJECT_TRIGGER, etc */
-	char	   		*modelname;		/* Model name */
+	char	   		*modelname;		/* Model name убрать TODO */
 	char	   		*tablename;		/* data table for learning dataset  */
-	ModelType modelclass;		/* class of model  */
+	ModelType 		modelclass;		/* class of model  */
 	List	   		*options;		/* List of Options nodes */
+	Node 			*query;
 } CreateModelStmt;
 
 typedef enum ModelParameter {

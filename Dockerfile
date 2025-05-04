@@ -65,8 +65,8 @@ ENV PGPORT=5432
 RUN echo "export MAKEFLAGS=\"-j \$(nproc)\"" >> "/home/postgres/.bashrc"
 
 
-RUN git clone --branch rel_16_ML --depth 1 https://github.com/akalend/postgres.ml.git && \
-	cd postgres.ml && ./configure --with-python && make && sudo make install && \
+RUN git clone  https://github.com/akalend/postgresml.16.git &&\
+	cd postgresml.16 && ./configure --with-python && make && sudo make install && \
    cd contrib && git clone https://github.com/akalend/pg_catboost.git && \
    cd pg_catboost && make && sudo make install
 

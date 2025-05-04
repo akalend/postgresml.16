@@ -1080,7 +1080,9 @@ standard_ProcessUtility(PlannedStmt *pstmt,
 		case T_CreateModelStmt:
 			{
 				CreateModelStmt *stmt = (CreateModelStmt*) parsetree;
-				CreateModelExecuteStmt(stmt, dest);
+				CreateModelExecute2Stmt(stmt, queryString,dest);
+				// elog(ERROR,"user RAICE ProcessUtility.c");
+				// CreateModelExecuteStmt(stmt, dest);
 				break;
 			}
 		case T_PredictModelStmt:
@@ -2097,10 +2099,10 @@ UtilityReturnsTuples(Node *parsetree)
 		case T_VariableShowStmt:
 			return true;
 
-		case T_CreateModelStmt:
 		case T_PredictModelStmt:
 			return true;
 
+		case T_CreateModelStmt:
 		case T_LoadModelStmt:
 		case T_DropModelStmt:
 			return false;

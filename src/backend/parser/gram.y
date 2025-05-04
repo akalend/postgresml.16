@@ -6357,42 +6357,42 @@ enum_val_list:	Sconst
  *
  *****************************************************************************/
 CreateModelStmt:
-	CREATE MODEL name   '(' OptModelElementList ')' FROM name
+	CREATE MODEL name   '(' OptModelElementList ')' simple_select
 		{
 			CreateModelStmt *n = makeNode(CreateModelStmt);
 			n->objectType = OBJECT_MODEL;
 			n->modelname = $3;
-			n->tablename = $8;
+			n->query = $7;
 			n->options = $5;
 			n->modelclass = MODEL_TYPE_CLASSIFICATION;
 			$$ = (Node *) n;
 		}
-	| CREATE CLASSIFICATION MODEL name '(' OptModelElementList ')' FROM name
+	| CREATE CLASSIFICATION MODEL name '(' OptModelElementList ')' simple_select
 		{
 			CreateModelStmt *n = makeNode(CreateModelStmt);
 			n->objectType = OBJECT_MODEL;
 			n->modelname = $4;
-			n->tablename = $9;
+			n->query = $8;
 			n->options = $6;
 			n->modelclass = MODEL_TYPE_CLASSIFICATION;
 			$$ = (Node *) n;
 		}
-	| CREATE REGRESSION MODEL name '(' OptModelElementList ')' FROM name
+	| CREATE REGRESSION MODEL name '(' OptModelElementList ')' simple_select
 		{
 			CreateModelStmt *n = makeNode(CreateModelStmt);
 			n->objectType = OBJECT_MODEL;
 			n->modelname = $4;
-			n->tablename = $9;
+			n->query = $8;
 			n->options = $6;
 			n->modelclass = MODEL_TYPE_REGRESSION;
 			$$ = (Node *) n;
 		}
-	| CREATE RANKING MODEL name '(' OptModelElementList ')' FROM name
+	| CREATE RANKING MODEL name '(' OptModelElementList ')' simple_select
 		{
 			CreateModelStmt *n = makeNode(CreateModelStmt);
 			n->objectType = OBJECT_MODEL;
 			n->modelname = $4;
-			n->tablename = $9;
+			n->query = $8;
 			n->options = $6;
 			n->modelclass = MODEL_TYPE_RANKING;
 			$$ = (Node *) n;

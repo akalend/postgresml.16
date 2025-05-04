@@ -3,6 +3,7 @@
 #define ML_MODEL_METADATA_IDX "ml_model_pkey"
 
 void CreateModelExecuteStmt(CreateModelStmt *stmt, DestReceiver *dest);
+void CreateModelExecute2Stmt(CreateModelStmt *stmt, const char *queryString, DestReceiver *dest);
 void PredictModelExecuteStmt(CreateModelStmt *stmt, DestReceiver *dest);
 void LoadModelExecuteStmt(LoadModelStmt *stmt);
 void DropModelExecuteStmt(DropModelStmt *stmt);
@@ -39,6 +40,8 @@ typedef enum Anum_model
 	Anum_ml_model_data,
 	Anum_ml_model_classes,
 	Anum_ml_model_loss_function,
+	Anum_ml_model_sid,
+	Anum_ml_model_query,
 	_Anum_ml_max,
 } Anum_model;
 

@@ -1,6 +1,8 @@
 #include <sys/stat.h>
 #include <errno.h>
 #include <math.h>
+#include <curl/curl.h>
+
 #include "postgres.h"
 #include "c.h"
 #include "fmgr.h"
@@ -38,12 +40,13 @@
 #include "utils/syscache.h"
 
 
-
-
-
 #define QUOTEMARK '"'
+#define URL_REQUEST "http://localhost:8000/ml"
+
 
 static char * numeric_to_cstring(Numeric n);
+static void modelTypeToChar(ModelType modelType, char model_type[2]);
+
 static TupleDesc GetMlModelTableDesc(void);
 static ModelCalcerHandle * GetMlModelByName(const char * name, char **classes_json_str, char **loss_function, char* model_out_type);
 static char * GetFeaturesInfo(ModelCalcerHandle *modelHandle, int *resultLen);
@@ -54,12 +57,14 @@ static Datum LoadFileToBuffer(const char * tmp_name,  int file_length,void **mod
 static Datum GetFeaturesFieldInfo(void* model_buffer, int file_length, char **parms, char** classes);
 static void CreateTemplateTypesOfRecord(ModelCalcerHandle *modelHandle, TupleDesc tupdesc, int32** arrTypes);
 static void SetPredictionToModel(char* loss_function, ModelCalcerHandle **modelHandle);
-static void CreatePredictInputData(TupleDesc tupdesc, int32 count, int32* arrTypes, Datum *values, float4 **arrFloat, char*** arrCat);
+static void CreatePredictInputData(TupleDesc tupdesc, int32 count, int32 *arrTypes, Datum *values, float4 **arrFloat, char*** arrCat);
 
 static char * GetLossFunctionFromParms(char* parms);
 static char ** GetClassesFromJson(char* classes_json_str);
 static char * ArrayToStringList(char **featureName, int featureCount);
 static char * IntArrayToStringList(size_t *featureData, int featureCount);
+static void SaveSidToMetadata( uint sid, char *modelname, ModelType modelType, char *str_parameter, char *queryString);
+static void SendRequest(int32 sid);
 static int LoadModelFromFileAndSaveToMetadata(const char* tmp_name, char* modelname, ModelType model_type,
 												Datum acc, char* str_parameter);
 
@@ -123,8 +128,37 @@ GetMlModelTableDesc(void)
 	TupleDescInitEntry(tupdesc, 7, "data", BYTEAOID, -1, 0);
 	TupleDescInitEntry(tupdesc, 8, "classes", TEXTOID, -1, 0);
 	TupleDescInitEntry(tupdesc, 9, "loss_function", TEXTOID, -1, 0);
+	TupleDescInitEntry(tupdesc, 10, "sid", INT4OID, -1, 0);
+	TupleDescInitEntry(tupdesc, 11, "query", TEXTOID, -1, 0);
 	return tupdesc;
 }
+
+static void
+modelTypeToChar(ModelType modelType, char model_type[2])
+{
+	
+	switch (modelType)
+	{
+		case MODEL_TYPE_REGRESSION:
+			model_type[0] = 'R';
+			break;
+		case MODEL_TYPE_RANKING:
+			model_type[0] = 'G';
+			break;
+		case MODEL_TYPE_CLASSIFICATION:
+			model_type[0] = 'C';
+			break;
+		case MODEL_TYPE_UNDEFINED:
+			model_type[0] = 'U';
+			break;
+		default:
+			elog(ERROR, "undefined model type");
+	}
+
+	return (char*) model_type;
+}
+
+
 
 /* TODO:  внедрить следующие метрики:
 'Logloss', 'CrossEntropy', 'CtrFactor', 'Focal', 'RMSE', 'LogCosh', 'Lq', 'MAE', 'Quantile', 'MultiQuantile', 'Expectile',
@@ -909,6 +943,181 @@ PredictModelExecuteStmt(CreateModelStmt *stmt, DestReceiver *dest)
 }
 
 
+static void
+SaveSidToMetadata( uint32 sid, char *modelname, ModelType modelType, char *str_parameter, char *queryString)
+{
+	TupleDesc   tupdesc;
+	HeapTuple tup = NULL;
+	Datum  *values;
+	bool   *nulls, *doReplace;
+	struct stat st;
+	char model_type[2] = {'C', '\0'};
+	Relation rel, idxrel;
+	IndexScanDesc scan;
+	TupleTableSlot* slot;
+	ScanKeyData skey[1];
+	bool found = false;
+	NameData	name_name;
+
+	namestrcpy(&name_name, modelname);
+
+	modelTypeToChar(modelType, model_type);
+
+
+	/* save metadata  */
+	if (MetadataTableOid == InvalidOid)
+	{
+			MetadataTableOid  = get_relname_relid(ML_MODEL_METADATA,
+												  PG_PUBLIC_NAMESPACE);
+			MetadataTableIdxOid = get_relname_relid(ML_MODEL_METADATA_IDX,
+													PG_PUBLIC_NAMESPACE);
+	}
+
+	tupdesc = GetMlModelTableDesc();
+
+	values = (Datum*)palloc0( sizeof(Datum) * Natts_model);
+	nulls = (bool *) palloc(sizeof(bool) * Natts_model);
+	doReplace = (bool *) palloc0(sizeof(bool) * Natts_model);
+
+	memset(nulls, true, Natts_model);
+
+	/* Found by model name in ml_model */
+ 
+	rel = table_open(MetadataTableOid, RowExclusiveLock);
+	idxrel = index_open(MetadataTableIdxOid, AccessShareLock);
+
+	scan = index_beginscan(rel, idxrel, GetTransactionSnapshot(), 1 /* nkeys */, 0 /* norderbys */);
+
+	ScanKeyInit(&skey[0],
+				Anum_ml_name ,
+				BTGreaterEqualStrategyNumber, F_NAMEEQ,
+				NameGetDatum(&name_name));
+
+	index_rescan(scan, skey, 1, NULL /* orderbys */, 0 /* norderbys */);
+
+	slot = table_slot_create(rel, NULL);
+	found = false;
+	while (index_getnext_slot(scan, ForwardScanDirection, slot))
+	{
+		bool should_free;
+		tup = ExecFetchSlotHeapTuple(slot, false, &should_free);
+		
+		heap_deform_tuple(tup,  tupdesc, values, nulls);
+
+		if(should_free) heap_freetuple(tup);
+		found = true;
+	}
+
+
+	nulls[Anum_ml_model_type-1] = false;
+	values[Anum_ml_model_type-1] = CStringGetTextDatum(model_type);
+	doReplace[Anum_ml_model_type-1]  = true;
+
+	if (str_parameter)
+	{
+		nulls[Anum_ml_model_args-1] = false;
+		values[Anum_ml_model_args-1] = CStringGetTextDatum(str_parameter);
+		doReplace[Anum_ml_model_args-1]  = true;
+	}
+
+	nulls[Anum_ml_model_sid-1] = false;
+	values[Anum_ml_model_sid-1] = Int32GetDatum(sid);
+	doReplace[Anum_ml_model_sid-1]  = true;
+
+	nulls[Anum_ml_model_acc-1] = true;
+	doReplace[Anum_ml_model_acc-1]  = true;
+
+	nulls[Anum_ml_model_fieldlist-1] = true;
+	doReplace[Anum_ml_model_fieldlist-1]  = true;
+
+	nulls[Anum_ml_model_data-1] = true;
+	doReplace[Anum_ml_model_data-1]  = true;
+
+
+	elog(WARNING, "query: '%s'", queryString);
+	if (queryString)
+	{
+		nulls[Anum_ml_model_query-1] = false;
+		values[Anum_ml_model_query-1] = CStringGetTextDatum(queryString);
+		doReplace[Anum_ml_model_query-1]  = true;
+	}
+
+	if (found)
+	{
+		tup = heap_modify_tuple(tup, tupdesc,values, nulls, doReplace);
+		CatalogTupleUpdate(rel, &tup->t_self, tup);
+	}
+
+	index_endscan(scan);
+	index_close(idxrel, AccessShareLock);
+	ExecDropSingleTupleTableSlot(slot);
+
+	if (!found)
+	{
+		nulls[Anum_ml_name-1] = false;
+		values[Anum_ml_name-1] = CStringGetDatum(modelname);
+		
+		tup = heap_form_tuple(tupdesc, values, nulls);
+
+		CatalogTupleInsert(rel, tup);
+		heap_freetuple(tup);
+	}
+	
+	table_close(rel, RowExclusiveLock);
+}
+
+
+static void SendRequest(int32 sid)
+{
+
+	CURL *curl;
+	CURLcode res;
+	long response_code;
+	StringInfoData  buf;
+	initStringInfo(&buf);
+
+	curl_global_init(CURL_GLOBAL_DEFAULT);
+	curl = curl_easy_init();
+
+	if(curl)
+	{
+		curl_easy_setopt(curl, CURLOPT_URL, URL_REQUEST);
+		curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, "PUT");
+
+
+		
+		appendStringInfo(&buf, "{\"num\":%d}", sid);
+		
+
+		curl_easy_setopt(curl, CURLOPT_POSTFIELDS, buf.data);
+		
+		struct curl_slist *headers = NULL;
+		headers = curl_slist_append(headers, "Content-Type: application/json");
+		curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+
+
+		res = curl_easy_perform(curl);
+		
+		if(res != CURLE_OK)
+		{
+			elog(ERROR, "request to %s failed: %s", URL_REQUEST,
+					curl_easy_strerror(res));
+		}		
+		else
+		{
+			curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &response_code);
+			elog(WARNING, "Response code: %ld\n", response_code);
+		}
+
+		curl_slist_free_all(headers);
+		curl_easy_cleanup(curl);
+	}
+	
+	curl_global_cleanup();
+}
+
+
+
 static int
 LoadModelFromFileAndSaveToMetadata(const char* tmp_name, char* modelname,
 				 ModelType modelType, Datum acc, char* str_parameter)
@@ -932,23 +1141,8 @@ LoadModelFromFileAndSaveToMetadata(const char* tmp_name, char* modelname,
 
 
 	namestrcpy(&name_name, modelname);
-	switch (modelType)
-	{
-		case MODEL_TYPE_REGRESSION:
-			model_type[0] = 'R';
-			break;
-		case MODEL_TYPE_RANKING:
-			model_type[0] = 'G';
-			break;
-		case MODEL_TYPE_CLASSIFICATION:
-			model_type[0] = 'C';
-			break;
-		case MODEL_TYPE_UNDEFINED:
-			model_type[0] = 'U';
-			break;
-		default:
-			elog(ERROR, "undefined model type");
-	}
+
+	modelTypeToChar(modelType, model_type);
 
 
 	rc = stat(tmp_name, &st);
@@ -1101,6 +1295,64 @@ LoadModelExecuteStmt(LoadModelStmt *stmt)
 	LoadModelFromFileAndSaveToMetadata(stmt->filename, stmt->modelname, MODEL_TYPE_UNDEFINED, 0, NULL);
 }
 
+
+/*
+ * Model accuratly
+ name          | name         | modelName имя модели 
+ model_file    | text         |   скорее всего не испрользуется
+ model_type    | character(1) | modelType
+ acc           | real         |
+ info          | text         | параметры
+ args          | text         | аргументы 
+ data          | bytea        | данные файла модели
+ classes       | text         | классы модели
+ loss_function | text         | loss функция
+ sid           | integer      | sid - рандомное число или NULL  
+ query         | text         | SELECT запрос на датасет
+
+При выполнении оператора CREATE MODEL записывается
+ - имя  stmt->modelname
+ - тип  stmt->modelclass
+ - запрос на датасет 
+ - аргументы для машинного обучения (str_parameter)
+  - sid некое rand число
+
+
+ */
+void
+CreateModelExecute2Stmt(CreateModelStmt *stmt, const char *queryString, DestReceiver *dest)
+{
+	char *p = NULL;
+	int32 sid;
+
+	if (RecoveryInProgress())
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_WITH_CHECK_OPTION_VIOLATION),
+				 errmsg("CREATE statement accepted only master, it is replication"),
+				 errhint("You might need create the model in master")));
+	}
+
+
+	SelectStmt  *select = stmt->query;
+	List *targetList = select->targetList;
+	Assert( targetList != NULL);
+
+	ListCell *cell = list_head(targetList);
+	ResTarget *target = lfirst_node(ResTarget, cell);
+
+	p = pstrdup(queryString + target->location);
+	elog(WARNING, "target: SELECT %s", p );
+	srand(time(NULL));
+	sid = rand();
+	elog(WARNING, "sid: %d", sid );
+
+	char *args = CreateJsonModelParameters(stmt);
+	SaveSidToMetadata( sid,	stmt->modelname,
+			stmt->modelclass, args, p);
+	SendRequest(sid);
+	pfree(p);
+}
 
 /*
  * Model accuratly

@@ -1,0 +1,65 @@
+#!/usr/bin/env python
+
+import os,sys,time,psutil
+import daemon
+from model import Model
+
+LOG = '/tmp/ml.log'
+
+def run(numder):
+	model = Model()
+	if model.getQuery(numder):
+		model.getData()
+		model.process()
+
+def log():	
+	with open(LOG, 'a') as f:
+		args =  sys.argv[1] if len(sys.argv) > 1 else ''
+		out = "start pid {} {}\n".format(os.getpid(),args)
+		f.write(out)
+
+def sleep():
+	while(1):
+		time.sleep(1)
+
+"""
+Return status of process
+"""
+def show():
+
+	found = False
+
+	print("pid\t   args\t   status")
+	print("---------------------------")
+	for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
+		if proc.name() == 'python' and proc.cmdline()[1][-6:] == 'mlexec':
+			# print(proc.info)
+			if proc.info['pid'] == os.getpid():
+				continue				
+			found = True
+			print("%s\t| %s\t| %s"%(proc.info['pid'], proc.info['cmdline'][2], proc.status()))
+		
+	if not found:
+		print("Process ml not found")
+
+
+def start( numder):
+	pwd = os.getenv('PWD')
+	print('start Daemon in ',pwd)
+	print('arg', numder)
+	with daemon.DaemonContext(
+			detach_process=True,
+			working_directory=pwd):
+		log()
+		run(numder)
+
+
+if __name__ == "__main__":
+	arg =  sys.argv[1] if len(sys.argv) > 1 else None
+	if arg:
+		if arg == 'show':
+			show()
+		else:
+			start(arg)
+	else:
+		print("please input argument")
