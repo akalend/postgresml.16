@@ -4103,6 +4103,8 @@ typedef struct PredictModelStmt
 	ObjectType		objectType;		/* OBJECT_FUNCTION, OBJECT_TRIGGER, etc */
 	char	   		*modelname;		/* Model name */
 	char	   		*tablename;		/* data table for learning dataset  */
+	List 			*cols; 			/* output cols*/
+	Node 			*query;			/* query */
 } PredictModelStmt;
 
 

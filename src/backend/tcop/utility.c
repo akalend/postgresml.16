@@ -1087,8 +1087,8 @@ standard_ProcessUtility(PlannedStmt *pstmt,
 			}
 		case T_PredictModelStmt:
 			{
-				CreateModelStmt *stmt = (CreateModelStmt*) parsetree;
-				PredictModelExecuteStmt(stmt,dest);
+				PredictModelStmt *stmt = (PredictModelStmt*) parsetree;
+				PredictModelExecuteStmt(stmt, queryString, dest);
 				break;
 			}
 		case T_LoadModelStmt:

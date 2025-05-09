@@ -75,7 +75,7 @@ class Model:
 			binmodel = f.read()
 
 		with self.cnn.cursor() as cur:			
-			cur.execute("UPDATE ml_model SET acc=%s,sid=NULL,fieldlist=%s,data=%s  WHERE name=%s",\
+			cur.execute("UPDATE ml_model SET acc=%s,sid=NULL,fieldlist=%s,data=%s,model_type='C'  WHERE name=%s",\
 				[acc, str(columns).replace("'",'"'),binmodel,self.name])
 			self.cnn.commit()
 		

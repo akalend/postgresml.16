@@ -20,6 +20,7 @@
 #include "catalog/pg_proc.h"
 #include "utils/lsyscache.h"
 #include "executor/tuptable.h"
+#include "executor/spi.h"
 #include "utils/fmgroids.h"
 #include "utils/snapmgr.h"
 
@@ -43,11 +44,18 @@
 #define QUOTEMARK '"'
 #define URL_REQUEST "http://localhost:8000/ml"
 
+#define SPI_natts SPI_tuptable->tupdesc->natts
+
+typedef bool (*GetFeatureIndicesFunction)(ModelCalcerHandle* modelHandle, size_t** indices, size_t* count);
+
+static char** GetFeatures(ModelCalcerHandle* modelHandle, GetFeatureIndicesFunction getFeaturesFun, char** featureNames, size_t *count);
+static char** getModelFeatures(ModelCalcerHandle *modelHandle, size_t *featureCount);
 
 static char * numeric_to_cstring(Numeric n);
 static void modelTypeToChar(ModelType modelType, char model_type[2]);
 
 static TupleDesc GetMlModelTableDesc(void);
+static char** CreateArrayFromList(List *cols);
 static ModelCalcerHandle * GetMlModelByName(const char * name, char **classes_json_str, char **loss_function, char* model_out_type);
 static char * GetFeaturesInfo(ModelCalcerHandle *modelHandle, int *resultLen);
 static char* CreateJsonModelParameters(CreateModelStmt *stmt);
@@ -68,10 +76,12 @@ static void SendRequest(int32 sid);
 static int LoadModelFromFileAndSaveToMetadata(const char* tmp_name, char* modelname, ModelType model_type,
 												Datum acc, char* str_parameter);
 
+static bool checkInArray(char* name, char **features, int32 featureCount, int32 *retIndex);
+
 static Form_pg_class GetPredictTableFormByName(const char *tablename);
 static char * read_whole_file(const char *filename, int *length);
 static double sigmoid(double x);
-
+static bool pstrcasecmp(char  *s1, char  *s2);
 
 // сделать shmem
 static Oid mlJsonWrapperOid = InvalidOid;
@@ -95,6 +105,76 @@ numeric_to_cstring(Numeric n)
 
 
 /*
+* case compare column name and model feature name
+* and replace symbol '-' to '_'
+* as the postgers can't use symbol '-' in column name
+*/
+static bool
+pstrcasecmp(char  *s1, char  *s2)
+{
+	char *p1,*p2, pp1, pp2;
+	p1=s1;
+	p2=s2;
+
+	while (*p1 && *p2)
+	{
+		if (isalpha(*p1))
+			pp1 = tolower(*p1);
+		else
+			if (*p1 == '-')
+				pp1 = '_';
+			else
+				pp1 = *p1;
+
+		if (isalpha(*p2))
+			pp2 = tolower(*p2);
+		else
+			if (*p2 == '-')
+				pp2 = '_';
+			else
+				pp2 = *p2;
+
+		if (pp1 == '_' && strcasecmp(p1+1,"id") == 0 && strcasecmp(p2,"ID") == 0)
+			return true;
+
+		if (pp2 == '_' && strcasecmp(p2+1,"id") == 0 && strcasecmp(p1,"ID") == 0)
+			return true;
+
+		if (pp1!= pp2)
+		{
+			return false;
+		}
+
+		p1 ++;
+		p2 ++;
+	}
+
+	if (*p1 !=*p2)
+		return false;
+
+	return true;
+}
+
+
+static bool
+checkInArray(char* name, char **features, int32 featureCount, int32 *retIndex)
+{
+	int i;
+	for(i=0; i < featureCount; i++)
+	{
+		if (!features[i])
+			elog(ERROR, "the feature %d is NULL", i);
+		if ( pstrcasecmp(features[i], name) ){
+			*retIndex = i;
+			return true;
+		}
+	}
+	*retIndex = -1;
+	return false;
+}
+
+
+/*
  * Get a tuple descriptor for CREATE MODEL
  */
 TupleDesc
@@ -107,6 +187,27 @@ GetCreateModelResultDesc(void)
 	TupleDescInitEntry(tupdesc, (AttrNumber) 1, "accuracy",
 	   TEXTOID, -1, 0);
 	return tupdesc;
+}
+
+/*
+ * Create string array output of columns from PredictModelStmt->cols 
+ */
+static char**
+CreateArrayFromList(List *cols)
+{
+	int32 col_count = list_length(cols);
+	char **out = palloc0(sizeof(char*) * col_count);
+	int32 i = 0;
+	ListCell *lc;
+
+	foreach(lc, cols)
+	{
+		String *str;
+		str = (String *) lfirst(lc);
+		out[i] = pstrdup(str->sval);
+		i++;
+	}
+	return out;
 }
 
 
@@ -484,87 +585,28 @@ GetPredictTableFormByName(const char *tablename)
 TupleDesc GetPredictModelResultDesc(PredictModelStmt *node){
 
 	TupleDesc   tupdesc;
-	IndexScanDesc scan;
-	TupleTableSlot* slot;
-	Relation rel, idxrel;
-	HeapTuple tup;
-	ScanKeyData skey[1];
-	Form_pg_class form;
-	Oid PredictTableOid;
-	int32 attCount;
+	ListCell *lc;
+	int32 i = 1;
+	int32 col_count = list_length(node->cols);
 
-	form = GetPredictTableFormByName((const char*)node->tablename);
-	PredictTableOid = form->oid;
-	rel = table_open(AttributeRelationId, RowExclusiveLock);
-	idxrel = index_open(AttributeRelidNumIndexId, AccessShareLock);
 
-	scan = index_beginscan(rel, idxrel, GetTransactionSnapshot(), 1, 0);
+	tupdesc = CreateTemplateTupleDesc(col_count + 1);
 
-	ScanKeyInit((ScanKey)&skey,
-				Anum_pg_attribute_attrelid,
-				BTEqualStrategyNumber, F_OIDEQ,
-				ObjectIdGetDatum(PredictTableOid));
-
-	index_rescan(scan, skey, 1, NULL, 0 );
-
-	attCount = form->relnatts;
-	slot = table_slot_create(rel, NULL);
-	//  check fields as deleted
-	while (index_getnext_slot(scan, ForwardScanDirection, slot))
+	foreach(lc, node->cols)
 	{
-		Form_pg_attribute record;
-		bool should_free;
-		tup = ExecFetchSlotHeapTuple(slot, false, &should_free);
-		record = (Form_pg_attribute) GETSTRUCT(tup);
-
-		if (record->attisdropped == 0)
-		{
-			attCount --;
-			continue;
-		}
-	}
-	attCount ++;
-	index_endscan(scan);
-	index_close(idxrel, AccessShareLock);
-	ExecDropSingleTupleTableSlot(slot);
-
-	tupdesc = CreateTemplateTupleDesc(attCount);
-	idxrel = index_open(AttributeRelidNumIndexId, AccessShareLock);
-	scan = index_beginscan(rel, idxrel, GetTransactionSnapshot(), 1, 0);
-
-	ScanKeyInit((ScanKey)&skey,
-				Anum_pg_attribute_attrelid,
-				BTEqualStrategyNumber, F_OIDEQ,
-				ObjectIdGetDatum(PredictTableOid));
-
-	index_rescan(scan, skey, 1, NULL, 0 );
-
-	slot = table_slot_create(rel, NULL);
-	while (index_getnext_slot(scan, ForwardScanDirection, slot))
-	{
-		Form_pg_attribute record;
-		bool should_free;
-
-		tup = ExecFetchSlotHeapTuple(slot, false, &should_free);
-		record = (Form_pg_attribute) GETSTRUCT(tup);
-		if (record->attnum < 0) continue;
-		if (record->atttypid == 0) continue;
-
-		TupleDescInitEntry(tupdesc, (AttrNumber) record->attnum, 
-			NameStr(record->attname), record->atttypid, -1, 0);
+		String *str;
+		str = (String *) lfirst(lc);
+	
+		TupleDescInitEntry(tupdesc, (AttrNumber) i,
+			str->sval, TEXTOID, -1, 0);
+		i++;
 	}
 
-	TupleDescInitEntry(tupdesc, (AttrNumber)attCount, "ml_result",
+	TupleDescInitEntry(tupdesc, (AttrNumber) i, "ml_result",
 			TEXTOID, -1, 0);
 
-
-	index_endscan(scan);
-	ExecDropSingleTupleTableSlot(slot);
-
-	index_close(idxrel, AccessShareLock);
-	table_close(rel, RowExclusiveLock);
-
 	return tupdesc;
+
 }
 
 
@@ -596,8 +638,8 @@ CreateTemplateTypesOfRecord(ModelCalcerHandle *modelHandle, TupleDesc tupdesc, i
 		{
 			if (strcmp(tupdesc->attrs[j].attname.data, featureNames[i]) == 0)
 			{
-model2Table[i] = j;
-break;
+				model2Table[i] = j;
+				break;
 			}
 		}
 	}
@@ -637,12 +679,12 @@ break;
 		{
 			if (i == arrCat[j])
 			{
-p[model2Table[i]] = j;
-j++;
-continue;
+				p[model2Table[i]] = j;
+				j++;
+				continue;
 			}
 			if (j > cat_count)
-elog(ERROR, "feature count is owerflow");
+				elog(ERROR, "feature count is owerflow");
 		}
 	}
 
@@ -742,8 +784,52 @@ default:
 }
 
 
+static char**
+GetFeatures(ModelCalcerHandle* modelHandle, GetFeatureIndicesFunction getFeaturesFun, char** featureNames, size_t *count)
+{
+	size_t *indices = NULL, indices_cnt;
+	char **modelFeatureNames = NULL;
+
+	if (getFeaturesFun(modelHandle, &indices, &indices_cnt))
+	{
+		int32 i;
+		modelFeatureNames = palloc( sizeof(char*) * indices_cnt);
+
+		for (i=0; i < indices_cnt; i++)
+		{
+			modelFeatureNames[i] = pstrdup(featureNames[indices[i]]);
+		}
+
+		free(indices); // allocated by CatBoostModel::Get_Xxx_FeatureIndices()
+	} 
+	else
+	{
+		elog(ERROR,"error in GetFloatFeatureIndices() %s", GetErrorString());
+	}
+
+	*count = indices_cnt;
+	return modelFeatureNames;
+}
+
+
+/*
+*  get array names Model features
+*/
+static char**
+getModelFeatures(ModelCalcerHandle *modelHandle, size_t *featureCount)
+{
+	char** featureName = palloc(FEATURES_BUFSIZE);
+
+	if (!GetModelUsedFeaturesNames(modelHandle, &featureName, featureCount))
+	{
+		elog(ERROR,"get model feature name error: %s", GetErrorString());
+	}
+	return featureName;
+}
+
+
 void
-PredictModelExecuteStmt(CreateModelStmt *stmt, DestReceiver *dest)
+PredictModelExecuteStmt(PredictModelStmt *stmt, const char *queryString, DestReceiver *dest)
 {
 	Relation rel;
 	HeapTuple tup;
@@ -755,191 +841,317 @@ PredictModelExecuteStmt(CreateModelStmt *stmt, DestReceiver *dest)
 	bool *nulls, *outnulls;
 	ScanKeyData skey[1];
 	Form_pg_class form;
-	MemoryContext resultcxt, oldcxt;
 	Oid PredictTableOid;
 	ModelCalcerHandle *modelHandle;
-	int32  table_natts, i;
+	int32  table_natts, i, len, ret;
 	int32 *  arrTypes;
-	char **arrCat = NULL, *classes_json_str = NULL, **classes = NULL;
-	float *arrFloat = NULL;  // массив массива
+	char **arrCatNames = NULL, *classes_json_str = NULL, **classes = NULL;
+	char **arrFloatNames = NULL;  // массив имен
+
 	size_t model_dimension;
+	size_t *float_indices, *cat_indices;
+	size_t float_indices_cnt, cat_indices_cnt, featureCount;
+	char **featureNames;
+
+	int32 cat_feature_counter = 0, float_feature_counter = 0;
+	int32 *iscategory, *feature_idx, idx, *out_names;
+
+	char** arrCat = NULL;
+	double *arrFloat = NULL;
+
 	double* result_pa;
 	size_t cat_cnt, float_cnt;	
 	// bool isFound = false;
 	char *loss_function;
 	// ModelType modelclass;
-	int32 j=0, max_probability_idx;
+	int32 j=0, max_probability_idx, rows;
 	float4 max_probability;
 	char model_type;
+	SPITupleTable *tuptable;
+	MemoryContext oldCtx, resultcxt;
+
+	StringInfoData query;
+	char **arrOutNames = NULL;
+
+	SelectStmt *select = (SelectStmt *) stmt->query;
+	
+	List *targetList = select->targetList;
+	Assert( targetList != NULL);
+
+	ListCell *cell = list_head(targetList);
+	ResTarget *target = lfirst_node(ResTarget, cell);
 
 	/* This is the context that we will allocate our output data in */
-	resultcxt = CurrentMemoryContext;
-	oldcxt = MemoryContextSwitchTo(resultcxt);
+	resultcxt =  AllocSetContextCreate(TopMemoryContext,
+			"FeatureDataContext",
+			ALLOCSET_DEFAULT_SIZES);
+	oldCtx = MemoryContextSwitchTo(resultcxt);
 
-	form = GetPredictTableFormByName((const char*)stmt->tablename);
-	table_natts = form->relnatts;
+	initStringInfo(&query);
+	appendStringInfo(&query, "SELECT %s", queryString + target->location);
 
-	arrTypes = palloc0(sizeof(int32) * table_natts);
-
-	tupdesc = CreateTemplateTupleDesc(form->relnatts + 1);
-	PredictTableOid = form->oid;
-
-	values = (Datum*)palloc0( sizeof(Datum) * table_natts);
-	nulls = (bool *) palloc0(sizeof(bool) * table_natts);
-	outvalues = (Datum*)palloc0( sizeof(Datum) * (table_natts + 1));
-	outnulls = (bool *) palloc0(sizeof(bool) * (table_natts + 1));
-
-	/* attribute table scanning */
-	rel = table_open(AttributeRelationId, AccessShareLock);
-	ScanKeyInit((ScanKey)&skey,
-				Anum_pg_attribute_attrelid,
-				BTEqualStrategyNumber, F_OIDEQ,
-				ObjectIdGetDatum(form->oid));
-
-	sscan = systable_beginscan(rel, AttributeRelidNumIndexId, true,
-			   SnapshotSelf, 1, &skey[0]);
-
-	while ((tup = systable_getnext(sscan)) != NULL)
-	{
-		Form_pg_attribute record;
-		record = (Form_pg_attribute) GETSTRUCT(tup);
-		if (record->attnum < 0) continue;
-		if (record->attisdropped)
-		{
-			table_natts --;
-			continue;
-		}
-		TupleDescInitEntry(tupdesc, (AttrNumber) record->attnum,
-			NameStr(record->attname),
-			record->atttypid, -1, 0);
-	}
-	TupleDescInitBuiltinEntry(tupdesc, (AttrNumber) table_natts+1, "class", TEXTOID, -1, 0);
-
-	systable_endscan(sscan);
-	table_close(rel, AccessShareLock);
-
-	/* end create tupledesc of out data*/
-
+	// get model
 	modelHandle = GetMlModelByName((const char*)stmt->modelname, &classes_json_str, &loss_function, &model_type);
-	if (classes_json_str)
-	{
-		classes = GetClassesFromJson(classes_json_str);
-	}
 
-	SetPredictionToModel(loss_function, &modelHandle);
+	// loss_function = pstrdup("Logloss");
+	// SetPredictionToModel(loss_function, &modelHandle);
 
 	model_dimension = (size_t)GetDimensionsCount(modelHandle);
 	result_pa  = (double*) palloc( sizeof(double) * model_dimension);
 
-	CreateTemplateTypesOfRecord(modelHandle, tupdesc, &arrTypes);
+	featureNames = getModelFeatures(modelHandle, &featureCount);
 
-	cat_cnt = GetCatFeaturesCount(modelHandle);
-	float_cnt = GetFloatFeaturesCount(modelHandle);
+	//  получаем имена полей
+	arrCatNames = GetFeatures(modelHandle, GetCatFeatureIndices, featureNames, &cat_indices_cnt);
+	arrFloatNames = GetFeatures(modelHandle, GetFloatFeatureIndices, featureNames, &float_indices_cnt);
 
-	if (cat_cnt)
-		arrCat   = palloc0(sizeof(char*) * cat_cnt);
-	if (float_cnt)
-		arrFloat = palloc0(sizeof(float) * float_cnt);
 
-	/* prepare for projection of tuples */
+	// выходной дескриптор
+	tupdesc = GetPredictModelResultDesc(stmt);
+
+	arrOutNames = CreateArrayFromList(stmt->cols);
+
+
+	len = list_length(stmt->cols) + 1;
+
 	tstate = begin_tup_output_tupdesc(dest, tupdesc, &TTSOpsVirtual);
 
-	rel = table_open(PredictTableOid, AccessShareLock);
-	scan = table_beginscan(rel, GetLatestSnapshot(), 0, NULL);
+	outnulls = palloc( sizeof(bool) * len);
+	outvalues = palloc( sizeof(Datum) * len);
 
-	while ((tup = heap_getnext(scan, ForwardScanDirection)) != NULL)
+
+	SPI_connect();
+
+	ret = SPI_exec(query.data, 2);
+	rows = SPI_processed;
+	tuptable = SPI_tuptable;
+	if (ret < 1 || tuptable == NULL)
 	{
-		CHECK_FOR_INTERRUPTS();
-		if (!HeapTupleIsValid(tup))
-		{
-			elog(ERROR, " lookup failed for tuple");
-		}
+		elog(ERROR, "Query errorcode=%d", ret);
+	}
 
-		/* Data row */
-		heap_deform_tuple(tup, 	tupdesc, values, nulls);
 
-		CreatePredictInputData(tupdesc, form->relnatts, arrTypes, values, &arrFloat, &arrCat);
+	iscategory = (int32*)palloc0(SPI_natts * sizeof(int32));
+	feature_idx = (int32*)palloc0(SPI_natts * sizeof(int32));
+	out_names = (int32*)palloc0(SPI_natts * sizeof(int32));
 
-		if ( !CalcModelPredictionSingle(
-				modelHandle,
-				arrFloat, float_cnt,
-				(const char**) arrCat, cat_cnt,
-				result_pa, model_dimension)
-		   )
+	for(i=0; i < SPI_natts; i++)
+	{
+		if ( checkInArray(ModelGetFieldName(i), arrOutNames, len-1, &idx))
 		{
-			elog(ERROR, "prediction error in row %d: %s",j, GetErrorString());
-		}
-		max_probability = -1;
-		max_probability_idx = -1;
-		for(i=0; i < model_dimension; i++)
-		{
-			if (result_pa[i] > max_probability)
-			{
-				max_probability = result_pa[i];
-				max_probability_idx = i;
-			}
-		}
-
-		/* out row to output */
-		for (i=0; i < form->relnatts; i++)
-		{
-			outvalues[i] = values[i];
-			outnulls[i] = nulls[i];
-		}
-
-		/* out predict to output */
-		if ( model_type == 'C')
-		{
-			if (model_dimension == 1) // Logloss
-			{
-				if (classes_json_str)
-					outvalues[form->relnatts] = (Datum) cstring_to_text(classes[sigmoid(result_pa[0]) > 0.5 ? 1: 0]);
-				else
-				{
-					if (result_pa[0] > 0.5)
-						outvalues[form->relnatts] = (Datum) cstring_to_text( "1");
-					else
-						outvalues[form->relnatts] = (Datum) cstring_to_text( "0");
-				}
-			}
-			else//  Multiclass
-				outvalues[form->relnatts] = (Datum) cstring_to_text(classes[max_probability_idx]);
+			out_names[i] = idx;
 		}
 		else
+			out_names[i] = -1;
+
+		if(checkInArray(ModelGetFieldName(i), arrCatNames, cat_indices_cnt, &idx))
 		{
-			outvalues[form->relnatts] = (Datum) cstring_to_text(psprintf("%g", result_pa[0]));
+			iscategory[i] = ML_FEATURE_CATEGORICAL;
+			feature_idx[i] = idx;
+			cat_feature_counter ++;
+			continue;
+		}
+		if ( checkInArray(ModelGetFieldName(i), arrFloatNames, float_indices_cnt, &idx))
+		{
+			float_feature_counter ++;
+			iscategory[i] = ML_FEATURE_FLOAT;
+			feature_idx[i] = idx;
+			continue;
 		}
 
+		iscategory[i] = ML_FEATURE_NONE;
+		feature_idx[i] = -1;
+
+	}
+
+	//  check model features
+	if (float_feature_counter != float_indices_cnt)
+	{
+		elog(ERROR,
+			"count of numeric features is not valid, must be %ld is %ld",
+			float_indices_cnt, float_feature_counter
+		);
+	}
+
+	if (cat_feature_counter != cat_indices_cnt)
+	{
+		elog(ERROR,
+			"count of categocical features is not valid, must be %ld is %ld",
+			cat_indices_cnt, cat_feature_counter
+		);
+	}
+
+
+	arrCat = palloc0(sizeof(char*) * cat_indices_cnt);
+	arrFloat = palloc0(sizeof(double*) * float_indices_cnt);
+
+	for (i = 0; i < rows; i++)
+	{
+		HeapTuple   spi_tuple = SPI_tuptable->vals[i];
+		int32 j;
+		for (j = 0; j < len; j++)
+			outnulls[j] = true;
+
+
+		for (j = 0; j < SPI_natts; j++)
+		{
+			char    *value;
+			value = SPI_getvalue(spi_tuple, SPI_tuptable->tupdesc, j+1);
+
+			if (out_names[j] > -1)
+			{
+				outvalues[out_names[j]] = (Datum) cstring_to_text(strdup(value));
+				outnulls[out_names[j]] = false;
+			}
+
+			if (iscategory[j] == ML_FEATURE_FLOAT)
+			{
+				double d;  
+				sscanf(value, "%lf", &d);
+				arrFloat[feature_idx[j]] = d;
+				continue;
+			}
+			if (iscategory[j] == ML_FEATURE_CATEGORICAL)
+			{
+				arrCat[feature_idx[j]] = pstrdup(value);
+				continue;
+			}
+		}
+
+		if (!CalcModelPredictionSingle(modelHandle, arrFloat, float_indices_cnt,
+								       arrCat, cat_indices_cnt, result_pa,
+								       model_dimension))
+		{
+			elog( ERROR, "CalcModelPrediction error message: %s \nrow num=%d",
+				GetErrorString(),i);
+
+		}
+
+		outnulls[len-1] = false;
+		outvalues[len-1] = (Datum) cstring_to_text(sigmoid(result_pa[0]) > 0.5 ? "1":"0");		
 		do_tup_output(tstate, outvalues, outnulls);
 	}
 
 
-	do_tup_output(tstate, outvalues, outnulls);
+	SPI_finish();
+
+
+
+
+	
 	end_tup_output(tstate);
 
-	if (arrCat)
-	{
-		for( i=0; i < cat_cnt; i++)
-		{
-			pfree(arrCat[i]);
-		}
-	}
+	pfree(query.data);
 
-	if (arrFloat)
-		pfree(arrFloat);
 
-	pfree(arrTypes);	
-	table_close(rel, AccessShareLock);
-	table_endscan(scan);
+	
+	MemoryContextSwitchTo(oldCtx);
+	
 
-	if (classes)
-	{
-		pfree(classes[0]);
-		pfree(classes[1]);
-		pfree(classes);
-	}
+	free(cat_indices);
+	free(float_indices);
+	free(featureNames);
+
 	ModelCalcerDelete(modelHandle);
-	MemoryContextSwitchTo(oldcxt);
+	return;
+
+
+
+
+
+
+	// /* end create tupledesc of out data*/
+
+
+	// /* prepare for projection of tuples */
+	// tstate = begin_tup_output_tupdesc(dest, tupdesc, &TTSOpsVirtual);
+
+	// rel = table_open(PredictTableOid, AccessShareLock);
+	// scan = table_beginscan(rel, GetLatestSnapshot(), 0, NULL);
+
+	// while ((tup = heap_getnext(scan, ForwardScanDirection)) != NULL)
+	// {
+	// 	CHECK_FOR_INTERRUPTS();
+	// 	if (!HeapTupleIsValid(tup))
+	// 	{
+	// 		elog(ERROR, " lookup failed for tuple");
+	// 	}
+
+	// 	/* Data row */
+	// 	heap_deform_tuple(tup, 	tupdesc, values, nulls);
+
+	// 	CreatePredictInputData(tupdesc, form->relnatts, arrTypes, values, &arrFloat, &arrCat);
+
+	// 	if ( !CalcModelPredictionSingle(
+	// 			modelHandle,
+	// 			arrFloat, float_cnt,
+	// 			(const char**) arrCat, cat_cnt,
+	// 			result_pa, model_dimension)
+	// 	   )
+	// 	{
+	// 		elog(ERROR, "prediction error in row %d: %s",j, GetErrorString());
+	// 	}
+	// 	max_probability = -1;
+	// 	max_probability_idx = -1;
+	// 	for(i=0; i < model_dimension; i++)
+	// 	{
+	// 		if (result_pa[i] > max_probability)
+	// 		{
+	// 			max_probability = result_pa[i];
+	// 			max_probability_idx = i;
+	// 		}
+	// 	}
+
+	// 	/* out row to output */
+	// 	for (i=0; i < form->relnatts; i++)
+	// 	{
+	// 		outvalues[i] = values[i];
+	// 		outnulls[i] = nulls[i];
+	// 	}
+
+	// 	/* out predict to output */
+	// 	if ( model_type == 'C')
+	// 	{
+	// 		if (model_dimension == 1) // Logloss
+	// 		{
+	// 			if (classes_json_str)
+	// 				outvalues[form->relnatts] = (Datum) cstring_to_text(classes[sigmoid(result_pa[0]) > 0.5 ? 1: 0]);
+	// 			else
+	// 			{
+	// 				if (result_pa[0] > 0.5)
+	// 					outvalues[form->relnatts] = (Datum) cstring_to_text( "1");
+	// 				else
+	// 					outvalues[form->relnatts] = (Datum) cstring_to_text( "0");
+	// 			}
+	// 		}
+	// 		else//  Multiclass
+	// 			outvalues[form->relnatts] = (Datum) cstring_to_text(classes[max_probability_idx]);
+	// 	}
+	// 	else
+	// 	{
+	// 		outvalues[form->relnatts] = (Datum) cstring_to_text(psprintf("%g", result_pa[0]));
+	// 	}
+
+	// 	do_tup_output(tstate, outvalues, outnulls);
+	// }
+
+
+	// do_tup_output(tstate, outvalues, outnulls);
+	// end_tup_output(tstate);
+
+
+	// pfree(arrTypes);	
+	// table_close(rel, AccessShareLock);
+	// table_endscan(scan);
+
+	// if (classes)
+	// {
+	// 	pfree(classes[0]);
+	// 	pfree(classes[1]);
+	// 	pfree(classes);
+	// }
+	// ModelCalcerDelete(modelHandle);
+	// // MemoryContextSwitchTo(oldcxt);
 }
 
 
@@ -1676,22 +1888,23 @@ GetMlModelByName(const char * name, char** classes_json_str, char **loss_functio
 		bytea	   *bstr = DatumGetByteaPP(values[Anum_ml_model_data-1]);
 		text *txt, *type_text = DatumGetTextPP(values[Anum_ml_model_type-1]);
 		int len = VARSIZE(bstr);
-		const char* bufferData = VARDATA(bstr);
+		const void* bufferData = VARDATA(bstr);
 		const char* model_type = text_to_cstring(type_text);
 
-		*loss_function = text_to_cstring(DatumGetTextPP(values[Anum_ml_model_loss_function-1]));
-		*model_out_type = model_type[0];
-		if (model_type[0] == 'C' && !nulls[Anum_ml_model_classes-1])
-		{
-			txt  = DatumGetTextPP(values[Anum_ml_model_classes-1]);
-			if (txt)
-				*classes_json_str = text_to_cstring(txt);
-		}
+		// *loss_function = text_to_cstring(DatumGetTextPP(values[Anum_ml_model_loss_function-1]));
+		// *model_out_type = model_type[0];
+		// if (model_type[0] == 'C' && !nulls[Anum_ml_model_classes-1])
+		// {
+		// 	txt  = DatumGetTextPP(values[Anum_ml_model_classes-1]);
+		// 	if (txt)
+		// 		*classes_json_str = text_to_cstring(txt);
+		// }
 		if (!LoadFullModelFromBuffer(modelHandle, bufferData, len))
 		{
-			elog(ERROR, "LoadFullModelFromBuffer error message: %s\n", GetErrorString());
+			elog(ERROR, "LoadFullModelFromBuffer error message: %s", GetErrorString());
 		}
 		
+		elog(WARNING, "model type %s, len=%d", model_type, len);
 		return modelHandle;
 	}
 

@@ -4,7 +4,7 @@
 
 void CreateModelExecuteStmt(CreateModelStmt *stmt, DestReceiver *dest);
 void CreateModelExecute2Stmt(CreateModelStmt *stmt, const char *queryString, DestReceiver *dest);
-void PredictModelExecuteStmt(CreateModelStmt *stmt, DestReceiver *dest);
+void PredictModelExecuteStmt(PredictModelStmt *stmt, const char *queryString, DestReceiver *dest);
 void LoadModelExecuteStmt(LoadModelStmt *stmt);
 void DropModelExecuteStmt(DropModelStmt *stmt);
 
@@ -14,6 +14,10 @@ TupleDesc GetPredictModelResultDesc(PredictModelStmt *node);
 
 
 #define FIELDCOUNT 256
+#define ModelGetFieldName(i)  SPI_tuptable->tupdesc->attrs[i].attname.data
+#define ModelGetFieldType(i)  SPI_tuptable->tupdesc->attrs[i].atttypid
+#define FEATURES_BUFSIZE    1024
+
 
 typedef struct FormData_model
 {
@@ -66,7 +70,7 @@ enum ml_class_state_t {
 enum ml_feature_type
 {
 	ML_FEATURE_NONE = 0,
-	ML_FEATURE_FLOAT ,
-	ML_FEATURE_CATEGORICAL ,
-	ML_FEATURE_TEXT ,
+	ML_FEATURE_FLOAT,
+	ML_FEATURE_CATEGORICAL,
+	ML_FEATURE_TEXT,
 };

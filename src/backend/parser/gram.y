@@ -675,6 +675,9 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 %type <node>	StrModelElement
 %type <list>	StrModelElements StrModelElementList
 
+%type <list> opt_col_list col_list
+%type <str> col_el
+
 /*
  * Non-keyword token types.  These are hard-wired into the "flex" lexer.
  * They must be listed first so that their numeric codes do not depend on
@@ -755,7 +758,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 
 	OBJECT_P OF OFF OFFSET OIDS OLD ON ONLY OPERATOR OPTION OPTIONS OR
 	ORDER ORDINALITY OTHERS OUT_P OUTER_P
-	OVER OVERLAPS OVERLAY OVERRIDING OWNED OWNER
+	OVER OVERLAPS OVERLAY OVERRIDING OUTPUT OWNED OWNER
 
 	PARALLEL PARAMETER PARSER PARTIAL PARTITION PASSING PASSWORD
 	PLACING PLANS POLICY
@@ -6353,7 +6356,7 @@ enum_val_list:	Sconst
 /*****************************************************************************
  *
  *		QUERY :
- *				CREATE [CLASSIFICATION | REGRESSION | RANKING] MODEL name ( options ) FROM table
+ *				CREATE [CLASSIFICATION | REGRESSION | RANKING] MODEL name ( options ) select_query
  *
  *****************************************************************************/
 CreateModelStmt:
@@ -6490,28 +6493,52 @@ CreateModelStmt:
 /*****************************************************************************
  *
  *		QUERY :
- *				PREDICT [MODEL] name FROM table
+ *				PREDICT  [MODEL] name   AS select_query 
+ *
+ *				PREDICT MODEL name  OUTPUT opt_all_clause  AS select_query
  *
  *****************************************************************************/
 
 PredictModelStmt:
-		PREDICT name  FROM name
+		PREDICT name  AS simple_select 
 			{
 				PredictModelStmt *n = makeNode(PredictModelStmt);
 				n->objectType = OBJECT_MODEL;
 				n->modelname = $2;
-				n->tablename = $4;
+				n->query = $4;
 				$$ = (Node *) n;
 			}
-		| PREDICT MODEL name  FROM name
+		| PREDICT MODEL name AS simple_select
 			{
 				PredictModelStmt *n = makeNode(PredictModelStmt);
 				n->objectType = OBJECT_MODEL;
 				n->modelname = $3;
-				n->tablename = $5;
+				n->query = $5;
+				$$ = (Node *) n;
+			}
+
+		| PREDICT MODEL name OUTPUT opt_col_list AS simple_select
+			{
+				PredictModelStmt *n = makeNode(PredictModelStmt);
+				n->objectType = OBJECT_MODEL;
+				n->modelname = $3;
+				n->cols = $5;
+				n->query = $7;
 				$$ = (Node *) n;
 			}
 	;
+
+opt_col_list: col_list						{ $$ = $1; }
+			| /* EMPTY */					{ $$ = NIL; }
+		;
+
+col_list:
+			col_el								{ $$ = list_make1($1); }
+			| col_list ',' col_el				{ $$ = lappend($1, $3); }
+		;
+
+col_el: 
+	name { $$ = makeString($1); };
 
 
 /*****************************************************************************
@@ -17341,6 +17368,7 @@ unreserved_keyword:
 			| OPTIONS
 			| ORDINALITY
 			| OTHERS
+			| OUTPUT
 			| OVER
 			| OVERRIDING
 			| OWNED
@@ -17946,6 +17974,7 @@ bare_label_keyword:
 			| OTHERS
 			| OUT_P
 			| OUTER_P
+			| OUTPUT
 			| OVERLAY
 			| OVERRIDING
 			| OWNED
