@@ -50,9 +50,11 @@ typedef bool (*GetFeatureIndicesFunction)(ModelCalcerHandle* modelHandle, size_t
 
 static char** GetFeatures(ModelCalcerHandle* modelHandle, GetFeatureIndicesFunction getFeaturesFun, char** featureNames, size_t *count);
 static char** getModelFeatures(ModelCalcerHandle *modelHandle, size_t *featureCount);
+static char* getLossFunction(ModelCalcerHandle* modelHandle, const char* info);
+static char*** getModelClasses(ModelCalcerHandle* modelHandle, const char* info);
 
 static char * numeric_to_cstring(Numeric n);
-static void modelTypeToChar(ModelType modelType, char model_type[2]);
+static void modelTypeToChar(ModelType model_type, char char_model_type[2]);
 
 static TupleDesc GetMlModelTableDesc(void);
 static char** CreateArrayFromList(List *cols);
@@ -71,7 +73,7 @@ static char * GetLossFunctionFromParms(char* parms);
 static char ** GetClassesFromJson(char* classes_json_str);
 static char * ArrayToStringList(char **featureName, int featureCount);
 static char * IntArrayToStringList(size_t *featureData, int featureCount);
-static void SaveSidToMetadata( uint sid, char *modelname, ModelType modelType, char *str_parameter, char *queryString);
+static void SaveSidToMetadata( uint sid, char *modelname, ModelType model_type, char *str_parameter, char *queryString);
 static void SendRequest(int32 sid);
 static int LoadModelFromFileAndSaveToMetadata(const char* tmp_name, char* modelname, ModelType model_type,
 												Datum acc, char* str_parameter);
@@ -235,10 +237,10 @@ GetMlModelTableDesc(void)
 }
 
 static void
-modelTypeToChar(ModelType modelType, char model_type[2])
+modelTypeToChar(ModelType inner_model_type, char model_type[2])
 {
 	
-	switch (modelType)
+	switch (inner_model_type)
 	{
 		case MODEL_TYPE_REGRESSION:
 			model_type[0] = 'R';
@@ -828,6 +830,143 @@ getModelFeatures(ModelCalcerHandle *modelHandle, size_t *featureCount)
 }
 
 
+static char***
+getModelClasses(ModelCalcerHandle* modelHandle, const char* info)
+{
+	char ***res = NULL;
+	StringInfoData buf;
+	Jsonb* j;
+	SPITupleTable *tuptable;
+	int ret;
+	bool is_null = false;
+	Datum classes;
+	TupleDesc tupdesc;
+	char *value;
+
+	if( !info )
+	{
+		return NULL;
+	}
+
+	initStringInfo(&buf);
+	appendStringInfo(&buf,
+		"SELECT '%s'::jsonb #> '{data_processing_options,class_names}';",
+		info);
+
+	tuptable = SPI_tuptable;
+	ret = SPI_exec(buf.data, 0);
+	tuptable = SPI_tuptable;
+	if (ret < 1 || tuptable == NULL)
+	{
+		elog(ERROR, "Query errorcode=%d", ret);
+	}
+
+	tupdesc = tuptable->tupdesc;
+
+	if (0 == strcmp(SPI_getvalue(tuptable->vals[0], tupdesc, 1), "[]"))
+	{
+		return NULL;
+	}
+	classes = SPI_getbinval(tuptable->vals[0], tupdesc, 1,&is_null);
+
+	if (is_null){
+		elog(WARNING, "result is NULL");
+		return NULL;
+	}
+
+	j = DatumGetJsonbP(classes);
+
+	if(JB_ROOT_IS_ARRAY(j))
+	{
+		JsonbIterator *it;
+		JsonbIteratorToken type;
+		JsonbValue  jb;
+		char*** p;
+
+		res = (char***) palloc( sizeof(char*) * (
+				getJsonbLength((const JsonbContainer*) j,0) + 1)
+			  );
+		p = res;
+		it = JsonbIteratorInit(&j->root);
+
+		while ((type = JsonbIteratorNext(&it, &jb, false))
+			   != WJB_DONE)
+		{
+			if (WJB_ELEM == type){
+				if(jb.type == jbvString)
+				{
+				  *p = (char**)pnstrdup(jb.val.string.val, jb.val.string.len);
+				   p++;
+				   continue;
+				}
+				if(jb.type == jbvNumeric)
+				{
+					Numeric num;
+					num = jb.val.numeric;
+
+					*p = (char**)pstrdup(DatumGetCString(
+											DirectFunctionCall1(numeric_out,
+											  NumericGetDatum(num))));
+					p++;
+				   continue;
+				}
+				if(jb.type == jbvBool)
+				{
+					if (jb.val.boolean)
+					{
+						*p = (char**)pstrdup("true");
+						elog(WARNING, "arr %s", *p);
+					}
+					else
+					{
+						*p = (char**)pstrdup("false");
+						elog(WARNING, "arr %s", *p);
+					}
+					p++;
+					continue;
+				}
+
+				elog(ERROR, "undefined jsonb type num=%d",jb.type);
+			}
+		}
+		*p = NULL;
+		return res;
+	}
+
+	return NULL;
+}
+
+
+static char*
+getLossFunction(ModelCalcerHandle* modelHandle, const char* info)
+{
+	StringInfoData buf;
+	TupleDesc tupdesc;
+	SPITupleTable *tuptable;
+	int ret;
+
+	initStringInfo(&buf);
+	appendStringInfo(&buf,
+		"SELECT '%s'::jsonb #> '{loss_function,type}';", info);
+
+	tuptable = SPI_tuptable;
+	ret = SPI_exec(buf.data, 0);
+	tuptable = SPI_tuptable;
+
+	if (ret < 1 || tuptable == NULL)
+	{
+		elog(ERROR, "Query errorcode=%d", ret);
+	}
+
+	tupdesc = tuptable->tupdesc;
+
+	resetStringInfo(&buf);
+	appendStringInfo(&buf, "%s", SPI_getvalue(tuptable->vals[0], tupdesc, 1));
+
+	return buf.data;
+}
+
+
 void
 PredictModelExecuteStmt(PredictModelStmt *stmt, const char *queryString, DestReceiver *dest)
 {
@@ -860,15 +999,19 @@ PredictModelExecuteStmt(PredictModelStmt *stmt, const char *queryString, DestRec
 	double *arrFloat = NULL;
 
 	double* result_pa;
+	double* result_exp;
 	size_t cat_cnt, float_cnt;	
 	// bool isFound = false;
 	char *loss_function;
-	// ModelType modelclass;
+	// lossFunction modelclass;
 	int32 j=0, max_probability_idx, rows;
 	float4 max_probability;
 	char model_type;
 	SPITupleTable *tuptable;
 	MemoryContext oldCtx, resultcxt;
+	const char *info;
+	const char *lossFunction;
+	char ***arr_classes = NULL;
 
 	StringInfoData query;
 	char **arrOutNames = NULL;
@@ -893,14 +1036,15 @@ PredictModelExecuteStmt(PredictModelStmt *stmt, const char *queryString, DestRec
 	// get model
 	modelHandle = GetMlModelByName((const char*)stmt->modelname, &classes_json_str, &loss_function, &model_type);
 
-	// loss_function = pstrdup("Logloss");
-	// SetPredictionToModel(loss_function, &modelHandle);
-
 	model_dimension = (size_t)GetDimensionsCount(modelHandle);
 	result_pa  = (double*) palloc( sizeof(double) * model_dimension);
+	result_exp = (double*) palloc( sizeof(double) * model_dimension);
 
 	featureNames = getModelFeatures(modelHandle, &featureCount);
-
+	info = GetModelInfoValue(modelHandle, "params", 6); // strlen("parms")
+	if (info == NULL)
+		elog(ERROR, "can'not get model metadata");
+	
 	//  получаем имена полей
 	arrCatNames = GetFeatures(modelHandle, GetCatFeatureIndices, featureNames, &cat_indices_cnt);
 	arrFloatNames = GetFeatures(modelHandle, GetFloatFeatureIndices, featureNames, &float_indices_cnt);
@@ -922,7 +1066,10 @@ PredictModelExecuteStmt(PredictModelStmt *stmt, const char *queryString, DestRec
 
 	SPI_connect();
 
-	ret = SPI_exec(query.data, 2);
+	lossFunction = getLossFunction(modelHandle, info);
+	arr_classes = getModelClasses(modelHandle, info);
+	
+	ret = SPI_exec(query.data, 20);
 	rows = SPI_processed;
 	tuptable = SPI_tuptable;
 	if (ret < 1 || tuptable == NULL)
@@ -989,6 +1136,7 @@ PredictModelExecuteStmt(PredictModelStmt *stmt, const char *queryString, DestRec
 	{
 		HeapTuple   spi_tuple = SPI_tuptable->vals[i];
 		int32 j;
+		char* key_field_value = NULL;
 		for (j = 0; j < len; j++)
 			outnulls[j] = true;
 
@@ -1007,7 +1155,7 @@ PredictModelExecuteStmt(PredictModelStmt *stmt, const char *queryString, DestRec
 			if (iscategory[j] == ML_FEATURE_FLOAT)
 			{
 				double d;  
-				sscanf(value, "%lf", &d);
+				sscanf(value, "%f", &d);
 				arrFloat[feature_idx[j]] = d;
 				continue;
 			}
@@ -1024,11 +1172,72 @@ PredictModelExecuteStmt(PredictModelStmt *stmt, const char *queryString, DestRec
 		{
 			elog( ERROR, "CalcModelPrediction error message: %s \nrow num=%d",
 				GetErrorString(),i);
-
 		}
 
-		outnulls[len-1] = false;
-		outvalues[len-1] = (Datum) cstring_to_text(sigmoid(result_pa[0]) > 0.5 ? "1":"0");		
+
+		if (strncmp("\"MultiClass\"", lossFunction, 12) == 0)
+		{
+			char  ***p;
+			double max = 0., sm = 0.;
+			int max_i = -1;
+
+			for( j = 0; j < model_dimension; j ++)
+			{
+				result_exp[j] = exp(result_pa[j]);
+				sm += result_exp[j];
+			}
+			for( j = 0; j < model_dimension; j ++)
+			{
+				result_exp[j] = result_exp[j] / sm;
+				if (result_exp[j] > max){
+					max = result_exp[j];
+					max_i = j;
+				}
+			}
+
+			p = arr_classes + max_i;
+
+			outnulls[len-1] = false;
+			outvalues[len-1] = (Datum) cstring_to_text(*p);
+
+		}
+		else if (strcmp(lossFunction, "\"RMSE\"") == 0)
+		{
+			outnulls[len-1] = false;
+			outvalues[len-1] = (Datum) cstring_to_text(psprintf("%g", result_pa[0]));
+		}
+		else if (strncmp("\"Logloss\"", lossFunction, 9) == 0)
+		{
+			double probability = sigmoid(result_pa[0]);
+			int n = 0;
+			if (probability > 0.5)
+			{
+				n = 1;
+			}
+			outnulls[len-1] = false;
+			outvalues[len-1] = (Datum) cstring_to_text(arr_classes[n]);
+
+		}
+		else
+		{
+			elog(ERROR, "undefined Loss function");
+			// double probability = sigmoid(result_pa[0]);
+			// if (probability > 0.5)
+			// {
+			// 	class="yes";
+			// }
+			// else
+			// {
+			// 	class="no";
+			// }
+
+			// if (key_field_value)
+			// {
+			// 	out = key_field_value;
+			// }
+			// outnulls[len-1] = false;
+		}
+
 		do_tup_output(tstate, outvalues, outnulls);
 	}
 
@@ -1156,7 +1365,7 @@ PredictModelExecuteStmt(PredictModelStmt *stmt, const char *queryString, DestRec
 
 
 static void
-SaveSidToMetadata( uint32 sid, char *modelname, ModelType modelType, char *str_parameter, char *queryString)
+SaveSidToMetadata( uint32 sid, char *modelname, ModelType inner_model_type, char *str_parameter, char *queryString)
 {
 	TupleDesc   tupdesc;
 	HeapTuple tup = NULL;
@@ -1173,7 +1382,7 @@ SaveSidToMetadata( uint32 sid, char *modelname, ModelType modelType, char *str_p
 
 	namestrcpy(&name_name, modelname);
 
-	modelTypeToChar(modelType, model_type);
+	modelTypeToChar(inner_model_type, model_type);
 
 
 	/* save metadata  */
@@ -1332,14 +1541,14 @@ static void SendRequest(int32 sid)
 
 static int
 LoadModelFromFileAndSaveToMetadata(const char* tmp_name, char* modelname,
-				 ModelType modelType, Datum acc, char* str_parameter)
+				 ModelType model_type, Datum acc, char* str_parameter)
 {
 	TupleDesc   tupdesc;
 	HeapTuple tup = NULL;
 	Datum  *values;
 	bool   *nulls, *doReplace;
 	struct stat st;
-	char model_type[2] = {'C', '\0'};
+	char char_model_type[2] = {'C', '\0'};
 	int file_length;
 	char *parms = NULL, *classes = NULL, *loss_function = NULL;
 	void *model_buffer;
@@ -1354,7 +1563,7 @@ LoadModelFromFileAndSaveToMetadata(const char* tmp_name, char* modelname,
 
 	namestrcpy(&name_name, modelname);
 
-	modelTypeToChar(modelType, model_type);
+	modelTypeToChar(model_type, char_model_type);
 
 
 	rc = stat(tmp_name, &st);
@@ -1415,7 +1624,7 @@ LoadModelFromFileAndSaveToMetadata(const char* tmp_name, char* modelname,
 	}
 
 	nulls[Anum_ml_model_type-1] = false;
-	values[Anum_ml_model_type-1] = CStringGetTextDatum(model_type);
+	values[Anum_ml_model_type-1] = CStringGetTextDatum(char_model_type);
 	doReplace[Anum_ml_model_type-1]  = true;
 
 	if (acc)
@@ -1445,7 +1654,7 @@ LoadModelFromFileAndSaveToMetadata(const char* tmp_name, char* modelname,
 	values[Anum_ml_model_info-1] = CStringGetTextDatum(parms);
 	doReplace[Anum_ml_model_info-1]  = true;
 
-	if (modelType == MODEL_TYPE_CLASSIFICATION && classes != NULL)
+	if (model_type == MODEL_TYPE_CLASSIFICATION && classes != NULL)
 	{
 		nulls[Anum_ml_model_classes-1] = false;
 		values[Anum_ml_model_classes-1] = CStringGetTextDatum(classes);
@@ -1512,7 +1721,7 @@ LoadModelExecuteStmt(LoadModelStmt *stmt)
  * Model accuratly
  name          | name         | modelName имя модели 
  model_file    | text         |   скорее всего не испрользуется
- model_type    | character(1) | modelType
+ model_type    | character(1) | lossFunction
  acc           | real         |
  info          | text         | параметры
  args          | text         | аргументы 
@@ -1891,20 +2100,11 @@ GetMlModelByName(const char * name, char** classes_json_str, char **loss_functio
 		const void* bufferData = VARDATA(bstr);
 		const char* model_type = text_to_cstring(type_text);
 
-		// *loss_function = text_to_cstring(DatumGetTextPP(values[Anum_ml_model_loss_function-1]));
-		// *model_out_type = model_type[0];
-		// if (model_type[0] == 'C' && !nulls[Anum_ml_model_classes-1])
-		// {
-		// 	txt  = DatumGetTextPP(values[Anum_ml_model_classes-1]);
-		// 	if (txt)
-		// 		*classes_json_str = text_to_cstring(txt);
-		// }
 		if (!LoadFullModelFromBuffer(modelHandle, bufferData, len))
 		{
 			elog(ERROR, "LoadFullModelFromBuffer error message: %s", GetErrorString());
 		}
-		
-		elog(WARNING, "model type %s, len=%d", model_type, len);
+	
 		return modelHandle;
 	}
 
