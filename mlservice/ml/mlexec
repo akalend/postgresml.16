@@ -17,6 +17,7 @@ def log():
 		args =  sys.argv[1] if len(sys.argv) > 1 else ''
 		out = "start pid {} {}\n".format(os.getpid(),args)
 		f.write(out)
+		sys.stderr = f
 
 def sleep():
 	while(1):
@@ -59,6 +60,12 @@ if __name__ == "__main__":
 	if arg:
 		if arg == 'show':
 			show()
+		elif arg == 'run':
+			arg =  sys.argv[2] if len(sys.argv) > 2 else None
+			if arg is None:
+				print('error input format')
+			else:
+				run(arg)
 		else:
 			start(arg)
 	else:

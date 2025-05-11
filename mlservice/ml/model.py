@@ -42,17 +42,17 @@ class Model:
 		data = self.data
 		target = self.args['target'];
 
-
-		
 		if self.args.get('ignored'):
 			droplist = self.args['ignored']
 			data = data.drop(columns=droplist)
-			print('columns', data.columns)
 
 			tmp_features = data.columns[data.dtypes == 'object'].tolist()
 			cat_features = [i for i in tmp_features if i not in droplist]
 		else:
 			cat_features = data.columns[data.dtypes == 'object'].tolist()
+
+		if target in cat_features:
+			cat_features.remove(target)
 
 		train, test = train_test_split(data, test_size=split,  shuffle=False) 
 
@@ -65,18 +65,21 @@ class Model:
 	
 		model = CatBoostClassifier(allow_writing_files=False, task_type="CPU")
 		model.fit(pool)
-		acc = model.score(X_test, y_test)
-		columns = X_train.columns.tolist()
 
-		
+		self.acc = model.score(X_test, y_test)
+		self.columns = X_train.columns.tolist()
+		self.save(model);
+
+
+	def save(self, model):
 		filename = '/tmp/{}.cbm'.format(self.numder)
 		model.save_model(filename)
 		with open(filename, 'rb') as f:
 			binmodel = f.read()
 
-		with self.cnn.cursor() as cur:			
-			cur.execute("UPDATE ml_model SET acc=%s,sid=NULL,fieldlist=%s,data=%s,model_type='C'  WHERE name=%s",\
-				[acc, str(columns).replace("'",'"'),binmodel,self.name])
-			self.cnn.commit()
+			with self.cnn.cursor() as cur:			
+				cur.execute("UPDATE ml_model SET acc=%s,sid=NULL,fieldlist=%s,data=%s,model_type='C'  WHERE name=%s",\
+					[self.acc, str(self.columns).replace("'",'"'),binmodel,self.name])
+				self.cnn.commit()
 		
 		self.cnn.close()

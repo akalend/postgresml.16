@@ -1035,6 +1035,12 @@ PredictModelExecuteStmt(PredictModelStmt *stmt, const char *queryString, DestRec
 
 	// get model
 	modelHandle = GetMlModelByName((const char*)stmt->modelname, &classes_json_str, &loss_function, &model_type);
+	if (!modelHandle)
+	{
+		pfree(query.data);
+		MemoryContextSwitchTo(oldCtx);
+		return;
+	}
 
 	model_dimension = (size_t)GetDimensionsCount(modelHandle);
 	result_pa  = (double*) palloc( sizeof(double) * model_dimension);
@@ -1068,15 +1074,16 @@ PredictModelExecuteStmt(PredictModelStmt *stmt, const char *queryString, DestRec
 
 	lossFunction = getLossFunction(modelHandle, info);
 	arr_classes = getModelClasses(modelHandle, info);
-	
-	ret = SPI_exec(query.data, 20);
+	elog(WARNING, "classes %s %s", arr_classes[0],arr_classes[1]);
+
+
+	ret = SPI_exec(query.data, 22);
 	rows = SPI_processed;
 	tuptable = SPI_tuptable;
 	if (ret < 1 || tuptable == NULL)
 	{
 		elog(ERROR, "Query errorcode=%d", ret);
 	}
-
 
 	iscategory = (int32*)palloc0(SPI_natts * sizeof(int32));
 	feature_idx = (int32*)palloc0(SPI_natts * sizeof(int32));
@@ -1208,12 +1215,16 @@ PredictModelExecuteStmt(PredictModelStmt *stmt, const char *queryString, DestRec
 		}
 		else if (strncmp("\"Logloss\"", lossFunction, 9) == 0)
 		{
+			
+
+			char *value = SPI_getvalue(spi_tuple, SPI_tuptable->tupdesc, 1);
 			double probability = sigmoid(result_pa[0]);
 			int n = 0;
 			if (probability > 0.5)
 			{
 				n = 1;
 			}
+			elog(WARNING, "%s: %f %d %s",value, probability,n, arr_classes[n]);
 			outnulls[len-1] = false;
 			outvalues[len-1] = (Datum) cstring_to_text(arr_classes[n]);
 
@@ -2093,6 +2104,15 @@ GetMlModelByName(const char * name, char** classes_json_str, char **loss_functio
 
 	if (found)
 	{
+		elog(WARNING, "found");
+
+		bool data_is_null = nulls[Anum_ml_model_data-1];
+		if (data_is_null)
+		{
+			elog(WARNING, "the caclulations in progress or error");
+			return NULL;
+		}
+
 		ModelCalcerHandle *modelHandle = ModelCalcerCreate();
 		bytea	   *bstr = DatumGetByteaPP(values[Anum_ml_model_data-1]);
 		text *txt, *type_text = DatumGetTextPP(values[Anum_ml_model_type-1]);
