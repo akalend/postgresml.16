@@ -1074,10 +1074,8 @@ PredictModelExecuteStmt(PredictModelStmt *stmt, const char *queryString, DestRec
 
 	lossFunction = getLossFunction(modelHandle, info);
 	arr_classes = getModelClasses(modelHandle, info);
-	elog(WARNING, "classes %s %s", arr_classes[0],arr_classes[1]);
 
-
-	ret = SPI_exec(query.data, 22);
+	ret = SPI_exec(query.data, 0);
 	rows = SPI_processed;
 	tuptable = SPI_tuptable;
 	if (ret < 1 || tuptable == NULL)
@@ -1224,7 +1222,6 @@ PredictModelExecuteStmt(PredictModelStmt *stmt, const char *queryString, DestRec
 			{
 				n = 1;
 			}
-			elog(WARNING, "%s: %f %d %s",value, probability,n, arr_classes[n]);
 			outnulls[len-1] = false;
 			outvalues[len-1] = (Datum) cstring_to_text(arr_classes[n]);
 
@@ -2104,8 +2101,6 @@ GetMlModelByName(const char * name, char** classes_json_str, char **loss_functio
 
 	if (found)
 	{
-		elog(WARNING, "found");
-
 		bool data_is_null = nulls[Anum_ml_model_data-1];
 		if (data_is_null)
 		{
