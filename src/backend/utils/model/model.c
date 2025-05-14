@@ -1075,6 +1075,11 @@ PredictModelExecuteStmt(PredictModelStmt *stmt, const char *queryString, DestRec
 	lossFunction = getLossFunction(modelHandle, info);
 	arr_classes = getModelClasses(modelHandle, info);
 
+	elog(WARNING,"loss %s", lossFunction);
+for (i=0; i < model_dimension; i++)
+	elog(WARNING, "%s", arr_classes[i]);
+
+
 	ret = SPI_exec(query.data, 0);
 	rows = SPI_processed;
 	tuptable = SPI_tuptable;
@@ -1134,6 +1139,11 @@ PredictModelExecuteStmt(PredictModelStmt *stmt, const char *queryString, DestRec
 	}
 
 
+	if (!SetPredictionType(modelHandle, APT_RAW_FORMULA_VAL))
+	{
+		elog(ERROR, "prediction type error %s", GetErrorString());
+	}
+
 	arrCat = palloc0(sizeof(char*) * cat_indices_cnt);
 	arrFloat = palloc0(sizeof(double*) * float_indices_cnt);
 
@@ -1144,7 +1154,6 @@ PredictModelExecuteStmt(PredictModelStmt *stmt, const char *queryString, DestRec
 		char* key_field_value = NULL;
 		for (j = 0; j < len; j++)
 			outnulls[j] = true;
-
 
 		for (j = 0; j < SPI_natts; j++)
 		{
@@ -1159,8 +1168,8 @@ PredictModelExecuteStmt(PredictModelStmt *stmt, const char *queryString, DestRec
 
 			if (iscategory[j] == ML_FEATURE_FLOAT)
 			{
-				double d;  
-				sscanf(value, "%f", &d);
+				double d =  atof(value);  
+				elog(WARNING,"%s %f %g",value,  d, d);
 				arrFloat[feature_idx[j]] = d;
 				continue;
 			}
