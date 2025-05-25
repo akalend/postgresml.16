@@ -4,20 +4,19 @@ import os,sys,time,psutil
 import daemon
 from model import Model
 
-LOG = '/tmp/ml.log'
+LOG = '/tmp/ml2.log'
 
 def run(numder):
 	model = Model()
-	if model.getQuery(numder):
-		model.getData()
-		model.process()
+	model.getQuery(numder)
+	model.getData()
+	model.process()
 
-def log():	
+
+def log(text):
 	with open(LOG, 'a') as f:
-		args =  sys.argv[1] if len(sys.argv) > 1 else ''
-		out = "start pid {} {}\n".format(os.getpid(),args)
-		f.write(out)
-		sys.stderr = f
+		f.write(text)
+		# sys.stderr = f
 
 def sleep():
 	while(1):
@@ -46,12 +45,11 @@ def show():
 
 def start( numder):
 	pwd = os.getenv('PWD')
-	print('start Daemon in ',pwd)
-	print('arg', numder)
+	print('start Daemon')
 	with daemon.DaemonContext(
 			detach_process=True,
 			working_directory=pwd):
-		log()
+		# sleep()
 		run(numder)
 
 

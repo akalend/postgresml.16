@@ -1,10 +1,11 @@
 import json
 import psycopg
 import pandas as pd
-from catboost import CatBoostClassifier,Pool
+from catboost import CatBoostClassifier,Pool,CatBoostRegressor
 from sklearn.model_selection import train_test_split
 
 DATABASE_URL = "postgresql://postgres@localhost/test"
+LOG = "/tmp/ml2.log"
 
 """
 A generic model class.
@@ -16,28 +17,43 @@ class Model:
 		self.cnn = psycopg.connect("dbname=test user=postgres")
 		self.query = ''
 		self.data = None
+		self.type = None
+		self.log("start\n")
+
+	def log(self, text):
+		pass
+		# with open(LOG, 'a') as f:
+		# 	f.write(text)
+
 
 	def getQuery(self, numder):
 		self.numder = numder
+		self.log("getQuery\n")
 		with self.cnn.cursor() as cur:
-			cur.execute("SELECT query, args,name FROM ml_model WHERE sid=%s", [numder])
+			cur.execute("SELECT query, args,name,model_type FROM ml_model WHERE sid=%s", [numder])
 			row = cur.fetchone();
-			if row:
+			if 1:
 				self.query = row[0]
 				self.args = json.loads(row[1])
 				self.name = row[2]
-				print('Query from {} Ok'.format(numder))
+				self.type = row[3]
+				self.log("Ok\n")
 				return True
 			else:
-				print('row {} not found'.format(numder))
+				self.log("False\n")
 				return False
 
+		self.log("False\n")
+		return False
+
 	def getData(self):
+		self.log("getData\n")
 		sql =  "SELECT {}".format(self.query)
 		self.data = pd.read_sql(sql, self.cnn) 
 
 
 	def process(self):
+		self.log("process\n")
 		split = 0.2
 		data = self.data
 		target = self.args['target'];
@@ -63,8 +79,16 @@ class Model:
 
 		pool = Pool(X_train, y_train, cat_features=cat_features)
 	
-		model = CatBoostClassifier(allow_writing_files=False, task_type="CPU")
+		out = "type:'{}'".format(self.type)
+		if self.type == 'C':
+			model = CatBoostClassifier(allow_writing_files=False, task_type="CPU")
+		elif self.type == 'R':
+			model = CatBoostRegressor(allow_writing_files=False, task_type="CPU")
+		else:
+			self.log(out);
+
 		model.fit(pool)
+		self.log(out)
 
 		self.acc = model.score(X_test, y_test)
 		self.columns = X_train.columns.tolist()
@@ -78,8 +102,8 @@ class Model:
 			binmodel = f.read()
 
 			with self.cnn.cursor() as cur:			
-				cur.execute("UPDATE ml_model SET acc=%s,sid=NULL,fieldlist=%s,data=%s,model_type='C'  WHERE name=%s",\
-					[self.acc, str(self.columns).replace("'",'"'),binmodel,self.name])
+				cur.execute("UPDATE ml_model SET acc=%s,sid=NULL,fieldlist=%s,data=%s,model_type=%s  WHERE name=%s",\
+					[self.acc, str(self.columns).replace("'",'"'),binmodel, self.type,self.name])
 				self.cnn.commit()
 		
 		self.cnn.close()

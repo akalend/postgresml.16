@@ -2,6 +2,9 @@
 #include <errno.h>
 #include <math.h>
 #include <curl/curl.h>
+#include <ifaddrs.h>
+#include <netdb.h>
+
 
 #include "postgres.h"
 #include "c.h"
@@ -74,7 +77,7 @@ static char ** GetClassesFromJson(char* classes_json_str);
 static char * ArrayToStringList(char **featureName, int featureCount);
 static char * IntArrayToStringList(size_t *featureData, int featureCount);
 static void SaveSidToMetadata( uint sid, char *modelname, ModelType model_type, char *str_parameter, char *queryString);
-static void SendRequest(int32 sid);
+static void SendRequest(int32 sid, char* ip);
 static int LoadModelFromFileAndSaveToMetadata(const char* tmp_name, char* modelname, ModelType model_type,
 												Datum acc, char* str_parameter);
 
@@ -91,8 +94,38 @@ static Oid mlJsonWrapperOid = InvalidOid;
 static Oid MetadataTableOid = InvalidOid;
 static Oid MetadataTableIdxOid = InvalidOid;
 
+static inline char* getIp()
+{
+    struct ifaddrs *ifaddr, *ifa;
+    int family;
+    char* ip = palloc(INET_ADDRSTRLEN);
+
+    if (getifaddrs(&ifaddr) == -1) {
+        elog(ERROR, "sys error getifaddrs");
+    }
+
+    for (ifa = ifaddr; ifa != NULL; ifa = ifa->ifa_next) {
+        if (ifa->ifa_addr == NULL)
+            continue;
+
+        family = ifa->ifa_addr->sa_family;
+
+        if (family == AF_INET) { // IPv4
+            struct sockaddr_in *addr = (struct sockaddr_in *)ifa->ifa_addr;
+            inet_ntop(AF_INET, &addr->sin_addr, ip, sizeof(ip));
+            if (strcmp("eth0", ifa->ifa_name))
+                continue;
+        }
+        break;
+    }
+
+    elog(WARNING, "IP: %s", ip);
+    freeifaddrs(ifaddr);
+}
+
 inline static double
-sigmoid(double x) {
+sigmoid(double x)
+{
 	return 1. / (1. + exp(-x));
 }
 
@@ -701,8 +734,6 @@ SetPredictionToModel(char* loss_function, ModelCalcerHandle **modelHandle)
 {
 	if (strcmp(loss_function,"Logloss") == 0)
 	{
-		// modelclass = MODEL_TYPE_CLASSIFICATION;
-		// elog(WARNING,"loss %s APT_RAW_FORMULA_VAL", loss_function);
 		if (!SetPredictionType(*modelHandle, APT_RAW_FORMULA_VAL))
 		{
 			elog(ERROR, "prediction type error %s", GetErrorString());
@@ -710,8 +741,6 @@ SetPredictionToModel(char* loss_function, ModelCalcerHandle **modelHandle)
 	}
 	else if (strcmp(loss_function,"MultiClass") == 0)
 	{
-		// modelclass = MODEL_TYPE_CLASSIFICATION;
-		// elog(WARNING,"loss %s APT_CLASS", loss_function);
 		if (!SetPredictionType(*modelHandle, APT_CLASS))
 		{
 			elog(ERROR, "prediction type error %s", GetErrorString());
@@ -719,8 +748,6 @@ SetPredictionToModel(char* loss_function, ModelCalcerHandle **modelHandle)
 	}
 	else
 	{
-		// elog(WARNING,"loss %s APT_RAW_FORMULA_VAL", loss_function);
-		// modelclass = MODEL_TYPE_REGRESSION;
 		if (!SetPredictionType(*modelHandle, APT_RAW_FORMULA_VAL))
 		{
 			elog(ERROR, "prediction type error %s", GetErrorString());
@@ -915,12 +942,10 @@ getModelClasses(ModelCalcerHandle* modelHandle, const char* info)
 					if (jb.val.boolean)
 					{
 						*p = (char**)pstrdup("true");
-						elog(WARNING, "arr %s", *p);
 					}
 					else
 					{
 						*p = (char**)pstrdup("false");
-						elog(WARNING, "arr %s", *p);
 					}
 					p++;
 					continue;
@@ -1075,11 +1100,6 @@ PredictModelExecuteStmt(PredictModelStmt *stmt, const char *queryString, DestRec
 	lossFunction = getLossFunction(modelHandle, info);
 	arr_classes = getModelClasses(modelHandle, info);
 
-	elog(WARNING,"loss %s", lossFunction);
-for (i=0; i < model_dimension; i++)
-	elog(WARNING, "%s", arr_classes[i]);
-
-
 	ret = SPI_exec(query.data, 0);
 	rows = SPI_processed;
 	tuptable = SPI_tuptable;
@@ -1169,7 +1189,6 @@ for (i=0; i < model_dimension; i++)
 			if (iscategory[j] == ML_FEATURE_FLOAT)
 			{
 				double d =  atof(value);  
-				elog(WARNING,"%s %f %g",value,  d, d);
 				arrFloat[feature_idx[j]] = d;
 				continue;
 			}
@@ -1471,8 +1490,6 @@ SaveSidToMetadata( uint32 sid, char *modelname, ModelType inner_model_type, char
 	nulls[Anum_ml_model_data-1] = true;
 	doReplace[Anum_ml_model_data-1]  = true;
 
-
-	elog(WARNING, "query: '%s'", queryString);
 	if (queryString)
 	{
 		nulls[Anum_ml_model_query-1] = false;
@@ -1505,7 +1522,7 @@ SaveSidToMetadata( uint32 sid, char *modelname, ModelType inner_model_type, char
 }
 
 
-static void SendRequest(int32 sid)
+static void SendRequest(int32 sid, char *ip)
 {
 
 	CURL *curl;
@@ -1524,7 +1541,7 @@ static void SendRequest(int32 sid)
 
 
 		
-		appendStringInfo(&buf, "{\"num\":%d}", sid);
+		appendStringInfo(&buf, "{\"num\":%d, \"ip\":\"%s\"}", sid, ip);
 		
 
 		curl_easy_setopt(curl, CURLOPT_POSTFIELDS, buf.data);
@@ -1780,15 +1797,18 @@ CreateModelExecute2Stmt(CreateModelStmt *stmt, const char *queryString, DestRece
 	ResTarget *target = lfirst_node(ResTarget, cell);
 
 	p = pstrdup(queryString + target->location);
-	elog(WARNING, "target: SELECT %s", p );
 	srand(time(NULL));
 	sid = rand();
-	elog(WARNING, "sid: %d", sid );
 
 	char *args = CreateJsonModelParameters(stmt);
 	SaveSidToMetadata( sid,	stmt->modelname,
 			stmt->modelclass, args, p);
-	SendRequest(sid);
+	
+	{
+		char *ip = getIp();
+		SendRequest(sid, ip);
+		pfree(ip);
+	}	
 	pfree(p);
 }
 
