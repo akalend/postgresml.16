@@ -45,7 +45,7 @@
 
 
 #define QUOTEMARK '"'
-#define URL_REQUEST "http://localhost:8000/ml"
+#define URL_REQUEST "http://172.17.0.1:8000/ml"
 
 #define SPI_natts SPI_tuptable->tupdesc->natts
 
@@ -96,31 +96,31 @@ static Oid MetadataTableIdxOid = InvalidOid;
 
 static inline char* getIp()
 {
-    struct ifaddrs *ifaddr, *ifa;
-    int family;
-    char* ip = palloc(INET_ADDRSTRLEN);
+	struct ifaddrs *ifaddr, *ifa;
+	char* ip = palloc(INET_ADDRSTRLEN);
 
-    if (getifaddrs(&ifaddr) == -1) {
-        elog(ERROR, "sys error getifaddrs");
-    }
+	if (getifaddrs(&ifaddr) == -1) {
+		elog(ERROR, "sys error getifaddrs");
+	}
 
-    for (ifa = ifaddr; ifa != NULL; ifa = ifa->ifa_next) {
-        if (ifa->ifa_addr == NULL)
-            continue;
+	for (ifa = ifaddr; ifa != NULL; ifa = ifa->ifa_next) {
+		if (ifa->ifa_addr == NULL)
+			continue;
 
-        family = ifa->ifa_addr->sa_family;
+		if (ifa->ifa_addr->sa_family == AF_INET) {
+			memset(ip,0,INET_ADDRSTRLEN);
+			struct sockaddr_in *addr = (struct sockaddr_in *)ifa->ifa_addr;
+			inet_ntop(AF_INET, &addr->sin_addr, ip, INET_ADDRSTRLEN);
+			if (strcmp("eth0", ifa->ifa_name)) // interface into docker
+				continue;
+			else
+				break;
+		}
+		
+	}
 
-        if (family == AF_INET) { // IPv4
-            struct sockaddr_in *addr = (struct sockaddr_in *)ifa->ifa_addr;
-            inet_ntop(AF_INET, &addr->sin_addr, ip, sizeof(ip));
-            if (strcmp("eth0", ifa->ifa_name))
-                continue;
-        }
-        break;
-    }
-
-    elog(WARNING, "IP: %s", ip);
-    freeifaddrs(ifaddr);
+	freeifaddrs(ifaddr);
+	return ip;
 }
 
 inline static double
@@ -1200,8 +1200,8 @@ PredictModelExecuteStmt(PredictModelStmt *stmt, const char *queryString, DestRec
 		}
 
 		if (!CalcModelPredictionSingle(modelHandle, arrFloat, float_indices_cnt,
-								       arrCat, cat_indices_cnt, result_pa,
-								       model_dimension))
+									   arrCat, cat_indices_cnt, result_pa,
+									   model_dimension))
 		{
 			elog( ERROR, "CalcModelPrediction error message: %s \nrow num=%d",
 				GetErrorString(),i);
@@ -1808,7 +1808,7 @@ CreateModelExecute2Stmt(CreateModelStmt *stmt, const char *queryString, DestRece
 		char *ip = getIp();
 		SendRequest(sid, ip);
 		pfree(ip);
-	}	
+	}
 	pfree(p);
 }
 

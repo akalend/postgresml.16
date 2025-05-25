@@ -64,8 +64,7 @@ ENV PGHOME = /usr/local/pgsql
 ENV PGPORT=5432
 RUN echo "export MAKEFLAGS=\"-j \$(nproc)\"" >> "/home/postgres/.bashrc"
 
-
-RUN git clone  https://github.com/akalend/postgresml.16.git &&\
+RUN git clone -b selectel --single-branch https://github.com/akalend/postgresml.16.git &&\
 	cd postgresml.16 && ./configure --with-python && make && sudo make install && \
    cd contrib && git clone https://github.com/akalend/pg_catboost.git && \
    cd pg_catboost && make && sudo make install

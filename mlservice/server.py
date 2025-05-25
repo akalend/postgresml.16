@@ -1,5 +1,5 @@
 from typing import Union
-from fastapi import FastAPI
+from fastapi import FastAPI,Request
 from starlette.responses import JSONResponse
 from pydantic import BaseModel
 import asyncio
@@ -7,16 +7,21 @@ import asyncio
 from ml.ml import Ml
 
 
-class Num(BaseModel):
- 	num: int
+class Indata(BaseModel):
+	num: int
+	ip: str
 
 
 app = FastAPI()
 
+@app.get("/echo")
+async def echo(request: Request):
+	ip_address = request.client.host
+	return {"ip_address": ip_address}
 
 @app.put("/ml", status_code=202)
-async def create_item(num: Num):
+async def create_model(indata: Indata):
 	ml = Ml()
-	ml.run(num.num)
-	# await put_item(item)
+	print(indata)
+	ml.run(indata.num)
 	return None
