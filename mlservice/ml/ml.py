@@ -11,9 +11,9 @@ class Ml():
 	def __init__(self):
 		pass
 
-	def run(self, number):
+	def run(self, number, ip):
 		pwd = os.getenv("PWD")
-		cmd = '{}/ml/mlexec {}'.format(pwd, number)
+		cmd = '{}/ml/mlexec {} {}'.format(pwd, number, ip)
 		print(cmd)
 		subprocess.run('{}/ml/mlexec {}'.format(pwd, number), shell=True, cwd=pwd)
 

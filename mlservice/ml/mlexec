@@ -6,8 +6,8 @@ from model import Model
 
 LOG = '/tmp/ml2.log'
 
-def run(numder):
-	model = Model()
+def run(numder,ip):
+	model = Model(ip)
 	model.getQuery(numder)
 	model.getData()
 	model.process()
@@ -43,14 +43,14 @@ def show():
 		print("Process ml not found")
 
 
-def start( numder):
+def start( numder,ip):
 	pwd = os.getenv('PWD')
 	print('start Daemon')
 	with daemon.DaemonContext(
 			detach_process=True,
 			working_directory=pwd):
 		# sleep()
-		run(numder)
+		run(numder,ip)
 
 
 if __name__ == "__main__":
@@ -59,12 +59,22 @@ if __name__ == "__main__":
 		if arg == 'show':
 			show()
 		elif arg == 'run':
-			arg =  sys.argv[2] if len(sys.argv) > 2 else None
+			arg  =  sys.argv[2] if len(sys.argv) > 3 else None
+			arg2 =  sys.argv[3] if len(sys.argv) > 3 else None
+
 			if arg is None:
 				print('error input format')
 			else:
-				run(arg)
+				run(arg,arg2)
 		else:
-			start(arg)
+			if len(sys.argv) < 2:
+				print('error input format')
+			else:	
+				arg2 =  sys.argv[2] if len(sys.argv) > 2 else None
+				start(arg,arg2)
+
 	else:
 		print("please input argument")
+
+
+

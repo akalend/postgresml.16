@@ -13,11 +13,12 @@ A generic model class.
 """
 class Model:
 
-	def __init__(self):
-		self.cnn = psycopg.connect("dbname=test user=postgres")
+	def __init__(self, ip):
+		self.cnn = psycopg.connect("dbname=postgres user=postgres host={}".format(ip))
 		self.query = ''
 		self.data = None
 		self.type = None
+		self.ip = ip
 		self.log("start\n")
 
 	def log(self, text):
@@ -31,12 +32,12 @@ class Model:
 		self.log("getQuery\n")
 		with self.cnn.cursor() as cur:
 			cur.execute("SELECT query, args,name,model_type FROM ml_model WHERE sid=%s", [numder])
-			row = cur.fetchone();
+			row = cur.fetchone();			
 			if 1:
-				self.query = row[0]
+				self.query = row[0].decode('ascii')
 				self.args = json.loads(row[1])
-				self.name = row[2]
-				self.type = row[3]
+				self.name = row[2].decode('ascii')
+				self.type = row[3].decode('ascii')
 				self.log("Ok\n")
 				return True
 			else:
@@ -67,6 +68,7 @@ class Model:
 		else:
 			cat_features = data.columns[data.dtypes == 'object'].tolist()
 
+		data = data.dropna()
 		if target in cat_features:
 			cat_features.remove(target)
 
@@ -85,7 +87,10 @@ class Model:
 		elif self.type == 'R':
 			model = CatBoostRegressor(allow_writing_files=False, task_type="CPU")
 		else:
+			print('****** errr', )
 			self.log(out);
+
+		print( 'type', self.type)
 
 		model.fit(pool)
 		self.log(out)
@@ -98,6 +103,7 @@ class Model:
 	def save(self, model):
 		filename = '/tmp/{}.cbm'.format(self.numder)
 		model.save_model(filename)
+		print('acc', self.acc)
 		with open(filename, 'rb') as f:
 			binmodel = f.read()
 
