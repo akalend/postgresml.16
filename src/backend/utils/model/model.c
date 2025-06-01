@@ -1200,7 +1200,7 @@ PredictModelExecuteStmt(PredictModelStmt *stmt, const char *queryString, DestRec
 				}
 				else
 				{
-					arrCat[feature_idx[j]] = ""
+					arrCat[feature_idx[j]] = "";
 				}
 				continue;
 			}
