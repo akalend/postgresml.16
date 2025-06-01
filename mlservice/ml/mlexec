@@ -8,9 +8,12 @@ LOG = '/tmp/ml2.log'
 
 def run(numder,ip):
 	model = Model(ip)
-	model.getQuery(numder)
-	model.getData()
-	model.process()
+	res = model.getQuery(numder)
+	if res :
+		model.getData()
+		model.process()
+	else:
+		print('query is null num={}'.format(numder))
 
 
 def log(text):

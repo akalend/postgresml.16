@@ -20,11 +20,12 @@ class Model:
 		self.type = None
 		self.ip = ip
 		self.log("start\n")
+		print(self.cnn)
 
 	def log(self, text):
-		pass
-		# with open(LOG, 'a') as f:
-		# 	f.write(text)
+		# pass
+		with open(LOG, 'a') as f:
+			f.write(text)
 
 
 	def getQuery(self, numder):
@@ -33,15 +34,15 @@ class Model:
 		with self.cnn.cursor() as cur:
 			cur.execute("SELECT query, args,name,model_type FROM ml_model WHERE sid=%s", [numder])
 			row = cur.fetchone();			
-			if 1:
+			if row is not None:
 				self.query = row[0].decode('ascii')
 				self.args = json.loads(row[1])
 				self.name = row[2].decode('ascii')
 				self.type = row[3].decode('ascii')
-				self.log("Ok\n")
+				self.log("getQuery result: Ok\n")
 				return True
 			else:
-				self.log("False\n")
+				self.log("getQuery result:False\n")
 				return False
 
 		self.log("False\n")
