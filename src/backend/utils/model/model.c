@@ -1194,7 +1194,14 @@ PredictModelExecuteStmt(PredictModelStmt *stmt, const char *queryString, DestRec
 			}
 			if (iscategory[j] == ML_FEATURE_CATEGORICAL)
 			{
-				arrCat[feature_idx[j]] = pstrdup(value);
+				if (value)
+				{
+					arrCat[feature_idx[j]] = pstrdup(value);
+				}
+				else
+				{
+					arrCat[feature_idx[j]] = ""
+				}
 				continue;
 			}
 		}
