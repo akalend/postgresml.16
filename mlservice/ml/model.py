@@ -18,15 +18,23 @@ class Model:
 		self.query = ''
 		self.data = None
 		self.type = None
+		self.field = {}
 		self.ip = ip
 		self.log("start\n")
 		print(self.cnn)
 
 	def log(self, text):
+		print(text)
 		# pass
-		with open(LOG, 'a') as f:
-			f.write(text)
+		# with open(LOG, 'a') as f:
+		# 	f.write(text)
 
+	def toStr(self, field,num):
+		print('toStr',num, type(field[num]))
+		if type(field[num]) == 'str':
+			self.field[num] = field[num];
+		else:
+			self.field[num] = field[num].decode('ascii');
 
 	def getQuery(self, numder):
 		self.numder = numder
@@ -35,10 +43,15 @@ class Model:
 			cur.execute("SELECT query, args,name,model_type FROM ml_model WHERE sid=%s", [numder])
 			row = cur.fetchone();			
 			if row is not None:
-				self.query = row[0].decode('ascii')
-				self.args = json.loads(row[1])
-				self.name = row[2].decode('ascii')
-				self.type = row[3].decode('ascii')
+				self.toStr(row,0)
+				self.toStr(row,1)
+				self.toStr(row,2)
+				self.toStr(row,3)
+
+				self.query = self.field[0]
+				self.args = json.loads(self.field[1])
+				self.name = self.field[2]
+				self.type = self.field[3]
 				self.log("getQuery result: Ok\n")
 				return True
 			else:
@@ -49,9 +62,15 @@ class Model:
 		return False
 
 	def getData(self):
-		self.log("getData\n")
-		sql =  "SELECT {}".format(self.query)
-		self.data = pd.read_sql(sql, self.cnn) 
+		self.log("getData: query type {}\n".format(type(self.query)))
+
+		if type(self.query) == type('str'):
+
+			sql =  "SELECT {}".format(self.query)
+		else:
+			sql =  "SELECT {}".format(self.query.decode('ascii'))
+		self.data = pd.read_sql(sql, self.cnn)
+		print(sql)
 
 
 	def process(self):
@@ -59,6 +78,7 @@ class Model:
 		split = 0.2
 		data = self.data
 		target = self.args['target'];
+		print(data)
 
 		if self.args.get('ignored'):
 			droplist = self.args['ignored']
@@ -82,7 +102,10 @@ class Model:
 
 		pool = Pool(X_train, y_train, cat_features=cat_features)
 	
+		print( 'model type', self.type, "type:",type(self.type))
 		out = "type:'{}'".format(self.type)
+
+
 		if self.type == 'C':
 			model = CatBoostClassifier(allow_writing_files=False, task_type="CPU")
 		elif self.type == 'R':
@@ -90,8 +113,8 @@ class Model:
 		else:
 			print('****** errr', )
 			self.log(out);
+			exit(1)
 
-		print( 'type', self.type)
 
 		model.fit(pool)
 		self.log(out)

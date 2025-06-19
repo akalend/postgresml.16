@@ -1,0 +1,98 @@
+<!doctype html>
+<html>
+<head>
+	<title>Database console</title>
+	<meta charset="utf-8">
+	<link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0-alpha.6/css/bootstrap.min.css" integrity="sha384-rwoIResjU2yc3z8GV/NPeZWAv56rSmLldC3R/AZzGRnGxQQKnKkoFVhFQhNUwEyJ" crossorigin="anonymous">
+	<link href="main.css" rel="stylesheet">
+	<script 
+		src="https://code.jquery.com/jquery-3.6.3.js"
+		integrity="sha256-nQLuAZGRRcILA+6dMBOvcRh5Pe310sBpanc6+QBmyVM="
+		crossorigin="anonymous">
+	</script>
+</head>
+<body>
+	<div  id="queryForm"  class="container" > 
+		<!-- hidden="true" -->
+  		<div class="form-group">
+		<section class="console-reference" >
+	    	<textarea  class="form-control" id="responce" disabled  style="font-family: monospace; height: 300px; "></textarea>
+	  		<button id="queryBtn" type="button" class="btn btn-primary">SEND QUERY</button>
+	    	<label for="query">Query</label>
+			<textarea  class="form-control" style="font-family: monospace;"   id="query" ></textarea>
+			</section>
+  		</div>
+
+	</div>
+	<script language="javascript">
+		var id = window.location.hash.substring(1);
+		console.log( 'id=' + id )
+		var queryForm = document.getElementById("queryForm");
+		var responce = document.getElementById("responce");
+		var queryBtn = document.getElementById("queryBtn");
+		queryBtn.addEventListener("click", sendQuery);
+
+		var query = document.getElementById("query");
+		function runDocker() {
+			console.log("send run");
+			$.ajax({
+				  type: "POST",
+				  url: "/run",
+				  data : '',
+				  success: function(data){
+				  	id = data.id;
+
+				  	console.log( "responce");
+				  	console.log( data);
+					queryForm.hidden = false;
+				  	btn.disabled = true;				  	
+				  },
+				  error: function(err){
+				  	console.log(err)
+				  },
+				  dataType: "json"
+			});
+		}
+
+		function sendQuery() {
+			console.log("send run");
+			var data = '{ "query":"' + query.value + '","id":"' + id + '"}';
+			console.log(data)
+			$.ajax({
+				  type: "POST",
+				  url: "/psql",
+				  data : data,
+				  success: function(data){
+				  	console.log(data);
+				  	responce.value = query.value + "\n" +data;
+				 	query.value = ""; 	
+				  },
+				  error: function(err,code){
+				  	console.log(code)
+				  },
+				  contentType:"application/json",
+				  async: true,
+    			  dataType: "text"
+			});
+		}
+
+		function sessionCount() {
+			$.ajax({
+				  type: "GET",
+				  url: "/sessions",
+				  success:function(data){
+				  	console.log("sessions" + data.count)
+				  	if (data.count > 3) {
+				  		console.log('disabled')
+				  		btn.disabled = true;
+				  	} 
+				  }
+			});
+		}
+
+  sessionCount();
+
+	</script>
+
+</body>
+</html>

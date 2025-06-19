@@ -1,0 +1,20 @@
+body {
+    background-color: #fefefe;
+}
+.container {
+    padding: 2em;
+    margin-top: 2em;
+    background-color:#fff;
+}
+
+.console {
+    padding: 2em;
+    margin-top: 2em;
+    background-color:#000;
+    color: Snow ;
+    height: 200px ;
+}
+
+.console-reference {
+    margin-top: 2em;
+}
