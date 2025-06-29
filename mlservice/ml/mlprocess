@@ -1,0 +1,32 @@
+#!/usr/bin/env python
+
+import os,sys,time,psutil,redis
+from model import Model
+
+def run(ip, numder):
+	model = Model(ip)
+	res = model.getQuery(numder)
+	if res :
+		model.getData()
+		model.process()
+	else:
+		print('query is null num={}'.format(numder))
+
+
+
+
+if __name__ == "__main__":
+	r = redis.Redis(host='127.0.0.1')
+	key = r.lpop('mlkey')
+	if key is None:
+		r.close()
+		sys.exit(0)
+
+	data = key.decode('ascii').split(':')
+	print(data)
+	if len(data) < 2:
+		print("error input data", data)
+		exit(1)
+	
+	run(data[0],data[1])
+
