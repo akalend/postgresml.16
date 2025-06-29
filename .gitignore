@@ -1,6 +1,10 @@
 .git
 *.o
 *.so
+*.a
+*.txt
+*.pc
 mlservice/__pycache__/*
 mlservice/ml/__pycache__/*
 mlservice/www/error.log
+mlservice/catboost_info

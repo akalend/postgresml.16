@@ -12,4 +12,4 @@ psql -c 'CREATE EXTENSION catboost'
 cat datasets.dmp | psql 
 
 pg_ctl -D data -l /tmp/log stop
-postgres -D data
+postgres -D data -l /tmp/log

@@ -6,8 +6,9 @@ from pydantic import BaseModel
 import asyncio, os
 from time import sleep
 import datetime, subprocess
+import redis
 import docker
-from ml.ml import Ml
+
 
 
 class Indata(BaseModel):
@@ -37,10 +38,11 @@ async def echo(request: Request):
 
 @app.put("/ml", status_code=202)
 async def create_model(indata: Indata):
-	
-	ml = Ml()
-	print(indata)
-	ml.run(indata.num, indata.ip)
+	print('new request',indata)
+	r = redis.Redis(host='127.0.0.1')
+	out = "{}:{}".format( indata.ip, indata.num) 
+	r.rpush('mlkey', out)
+	r.quit()
 	return None
 
 @app.get("/")
@@ -70,11 +72,9 @@ async def query(query: Query):
 		print("ip",ip)
 		command = '/usr/local/pgsql/bin/psql -c "{}" -h {} -U postgres'.format(query.query, ip)
 		print(command)
-
-
 		# res = os.popen(command).read()
+		print('старт процесс')
 		res =  subprocess.Popen(command, shell=True, stdout=subprocess.PIPE).stdout.read()
-
 	
 	except docker.errors.NotFound:
 		print( f"Контейнер с ID {query.id} не найден")
@@ -84,10 +84,10 @@ async def query(query: Query):
 	except Exception as e:
 		print (f"Произошла ошибка: {str(e)}", query)
 		return f"Произошла ошибка: {str(e)}"
-
+	print('запрос выполнен')
 	return PlainTextResponse(res)
 
-@app.get("/run")
+@app.get("/run", response_class= RedirectResponse)
 async def start():
 	client = docker.from_env()
 	try:
@@ -101,8 +101,8 @@ async def start():
 
 	attrs = container.attrs
 	# # response.set_cookie(key="id", value=attrs['Id'][0:6], max_age=300, secure=False, httponly=True)
-
-	return RedirectResponse(url="/query.htm#" + attrs['Id'][0:6] ) 
+	# 
+	return "/query.htm#" + attrs['Id'][0:6] 
 # status_code=307
 
 
@@ -117,7 +117,7 @@ async def sessions():
 
 @app.post("/cookie")
 def create_cookie():
-    content = {"message": "Come to the dark side, we have cookies"}
-    response = JSONResponse(content=content)
-    response.set_cookie(key="fakesession", value="some-session-value")
-    return response
+	content = {"message": "Come to the dark side, we have cookies"}
+	response = JSONResponse(content=content)
+	response.set_cookie(key="fakesession", value="some-session-value")
+	return response

@@ -45,7 +45,7 @@
 
 
 #define QUOTEMARK '"'
-#define URL_REQUEST "http://172.17.0.1:8000/ml"
+#define URL_REQUEST "http://172.17.0.1:8001/ml"
 
 #define SPI_natts SPI_tuptable->tupdesc->natts
 

@@ -14,7 +14,9 @@ A generic model class.
 class Model:
 
 	def __init__(self, ip):
-		self.cnn = psycopg.connect("dbname=postgres user=postgres host={}".format(ip))
+		cnn_str="dbname=postgres user=postgres host={}".format(ip)
+		print(cnn_str)
+		self.cnn = psycopg.connect(cnn_str)
 		self.query = ''
 		self.data = None
 		self.type = None
