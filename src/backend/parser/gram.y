@@ -670,6 +670,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 %type <node>	PredictModelStmt
 %type <node>	LoadModelStmt
 %type <node>	DropModelStmt
+%type <node>	ShowModelStmt
 %type <node>	OptModelElement 
 %type <list>	OptModelElements OptModelElementList
 %type <node>	StrModelElement
@@ -1101,6 +1102,7 @@ stmt:
 			| RuleStmt
 			| SecLabelStmt
 			| SelectStmt
+			| ShowModelStmt
 			| TransactionStmt
 			| TruncateStmt
 			| UnlistenStmt
@@ -6574,6 +6576,22 @@ DropModelStmt:
 		}
 	;
 
+/*****************************************************************************
+ *
+ *		QUERY :
+ *				SHOW MODEL name
+ *
+ *****************************************************************************/
+
+ShowModelStmt:
+		SHOW MODEL name
+			{
+				ShowModelStmt *n = makeNode(ShowModelStmt);
+				n->objectType = OBJECT_MODEL;
+				n->modelname = $3;
+				$$ = (Node *) n;
+			}
+		;
 
 
 /*****************************************************************************

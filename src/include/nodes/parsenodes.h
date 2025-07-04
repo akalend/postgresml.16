@@ -4124,4 +4124,12 @@ typedef struct DropModelStmt
 	char	   		*modelname;		/* Model name */
 } DropModelStmt;
 
+
+typedef struct ShowModelStmt
+{
+	NodeTag			type;
+	ObjectType		objectType;		/* OBJECT_FUNCTION, OBJECT_TRIGGER, etc */
+	char	   		*modelname;		/* Model name */
+} ShowModelStmt;
+
 #endif							/* PARSENODES_H */

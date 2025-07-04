@@ -7,10 +7,12 @@ void CreateModelExecute2Stmt(CreateModelStmt *stmt, const char *queryString, Des
 void PredictModelExecuteStmt(PredictModelStmt *stmt, const char *queryString, DestReceiver *dest);
 void LoadModelExecuteStmt(LoadModelStmt *stmt);
 void DropModelExecuteStmt(DropModelStmt *stmt);
+void ShowModelExecuteStmt(ShowModelStmt *stmt, DestReceiver *dest);
 
 TupleDesc GetCreateModelResultDesc(void);
 Oid GetProcOidByName(const char* proname);
 TupleDesc GetPredictModelResultDesc(PredictModelStmt *node);
+TupleDesc GetShowModelResultDesc();
 
 
 #define FIELDCOUNT 256

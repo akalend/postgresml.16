@@ -1286,10 +1286,6 @@ PredictModelExecuteStmt(PredictModelStmt *stmt, const char *queryString, DestRec
 
 
 	SPI_finish();
-
-
-
-
 	
 	end_tup_output(tstate);
 
@@ -2261,7 +2257,7 @@ DropModelExecuteStmt(DropModelStmt *stmt)
 
 		heap_deform_tuple(tup,  tupdesc, values, nulls);
 		if(should_free) heap_freetuple(tup);
-		CatalogTupleDelete(rel, &tup->t_self);		
+		CatalogTupleDelete(rel, &tup->t_self);
 		found = true;
 		break;
 	}
@@ -2273,4 +2269,107 @@ DropModelExecuteStmt(DropModelStmt *stmt)
 
 	if (!found)
 		elog(ERROR, "model %s not found", stmt->modelname);
+}
+
+/* 
+ * SHOW MODEL tuple descripto
+ */
+TupleDesc GetShowModelResultDesc()
+{
+	TupleDesc   tupdesc;
+
+	/* need a tuple descriptor representing three TEXT columns */
+	tupdesc = CreateTemplateTupleDesc(3);
+	TupleDescInitEntry(tupdesc, (AttrNumber) 1, "accuracy",
+	   TEXTOID, -1, 0);
+	TupleDescInitEntry(tupdesc, (AttrNumber) 2, "args",
+	   TEXTOID, -1, 0);
+	TupleDescInitEntry(tupdesc, (AttrNumber) 3, "fields",
+	   TEXTOID, -1, 0);
+
+	return tupdesc;
+}
+
+
+void ShowModelExecuteStmt(ShowModelStmt *stmt, DestReceiver *dest)
+{
+	Relation rel, idxrel;
+	ScanKeyData skey[1];
+	IndexScanDesc scan;
+	NameData name_data;
+	TupleTableSlot* slot;
+	Datum *values, outvalues[3];
+	bool *nulls, outnulls[3];
+	TupleDesc tupdesc;
+	TupOutputState *tstate;
+	bool found = false;
+
+	if (RecoveryInProgress())
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_WITH_CHECK_OPTION_VIOLATION),
+				 errmsg("DROP statement accepted only master, it is replication"),
+				 errhint("You might need create the model in master")));
+	}
+
+	namestrcpy(&name_data, stmt->modelname);
+	
+	
+	if (MetadataTableOid == InvalidOid)
+	{
+			MetadataTableOid  = get_relname_relid(ML_MODEL_METADATA, PG_PUBLIC_NAMESPACE);
+			MetadataTableIdxOid = get_relname_relid(ML_MODEL_METADATA_IDX, PG_PUBLIC_NAMESPACE);
+	}
+
+	values = (Datum*)palloc0( sizeof(Datum) * Natts_model);
+	nulls = (bool *) palloc0(sizeof(bool) * Natts_model);
+	tupdesc = GetMlModelTableDesc();
+
+	rel = table_open(MetadataTableOid, RowExclusiveLock);
+	idxrel = index_open(MetadataTableIdxOid, AccessShareLock);
+
+	scan = index_beginscan(rel, idxrel, GetTransactionSnapshot(), 1 /* nkeys */, 0 /* norderbys */);
+
+	ScanKeyInit(&skey[0],
+				Anum_ml_name ,
+				BTGreaterEqualStrategyNumber, F_NAMEEQ,
+				NameGetDatum(&name_data));
+
+	index_rescan(scan, skey, 1, NULL /* orderbys */, 0 /* norderbys */);
+
+	slot = table_slot_create(rel, NULL);
+	while (index_getnext_slot(scan, ForwardScanDirection, slot))
+	{
+		HeapTuple tup;
+		bool should_free;
+	
+		tup = ExecFetchSlotHeapTuple(slot, false, &should_free);
+
+		heap_deform_tuple(tup,  tupdesc, values, nulls);
+		if(should_free) heap_freetuple(tup);
+		elog(WARNING, "args %s", TextDatumGetCString(values[5]));
+		found = true;
+		break;
+	}
+
+	index_endscan(scan);
+	ExecDropSingleTupleTableSlot(slot);
+	index_close(idxrel, AccessShareLock);
+	table_close(rel, RowExclusiveLock);
+
+	if (!found)
+		elog(ERROR, "model %s not found", stmt->modelname);
+
+	tupdesc = GetShowModelResultDesc();
+
+	/* prepare for projection of tuples */
+	tstate = begin_tup_output_tupdesc(dest, tupdesc, &TTSOpsVirtual);
+
+	outnulls[0] = true;
+	outnulls[1] = true;
+	outnulls[2] = true;
+	do_tup_output(tstate, outvalues, outnulls);
+
+	end_tup_output(tstate);
+
 }
