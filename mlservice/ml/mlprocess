@@ -13,8 +13,6 @@ def run(ip, numder):
 		print('query is null num={}'.format(numder))
 
 
-
-
 if __name__ == "__main__":
 	r = redis.Redis(host='127.0.0.1')
 	key = r.lpop('mlkey')

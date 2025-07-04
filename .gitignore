@@ -4,6 +4,7 @@
 *.a
 *.txt
 *.pc
+lib*
 mlservice/__pycache__/*
 mlservice/ml/__pycache__/*
 mlservice/www/error.log

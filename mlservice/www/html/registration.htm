@@ -1,0 +1,161 @@
+<!doctype html>
+<html>
+<head>
+	<title>registration</title>
+	<meta charset="utf-8">
+	<link rel="stylesheet" href="/bootstrap.min.css" integrity="sha384-rwoIResjU2yc3z8GV/NPeZWAv56rSmLldC3R/AZzGRnGxQQKnKkoFVhFQhNUwEyJ" crossorigin="anonymous">
+	<link href="main.css" rel="stylesheet">
+    <!-- Bootstrap core CSS -->
+    <link href="bootstrap.min.css" rel="stylesheet">
+
+    <!-- Custom styles for this template -->
+    <link href="floating-labels.css" rel="stylesheet">
+
+
+	<script 
+		src="/jquery-3.6.3.js"
+		integrity="sha256-nQLuAZGRRcILA+6dMBOvcRh5Pe310sBpanc6+QBmyVM="
+		crossorigin="anonymous">
+	</script>
+</head>
+<body>
+  <div >
+    <form class="form-signin" >
+      <div class="text-center mb-4">
+        <h1 class="h3 mb-3 font-weight-normal">Регистрация</h1>
+      </div>
+  	  <div class="form-label-group">
+        <input type="text" id="inputName" class="form-control" >
+        <label for="inputName">Name</label>
+      </div>  
+        <div   id=dangerEmail  class="alert alert-danger alert-dismissible fade " role="alert" >
+          <strong>Ошибка!</strong>  Такой email уже существует.
+          <button type="button" class="close" data-dismiss="alert" aria-label="Close" id="closeBtn">
+            <span aria-hidden="true">&times;</span>
+          </button>
+        </div>
+      <div class="form-label-group">
+        <input type="email" id="inputEmail" class="form-control" placeholder="Email address" required autofocus>
+        <label for="inputEmail">Email address</label>
+      </div>
+
+      <div class="form-label-group ">
+        <input type="password" id="inputPassword" class="form-control" placeholder="Password" required>
+        <label for="inputPassword">Password</label>
+        <!-- <div class="valid-feedback"> -->
+      </div>
+
+      <button id="sigIn" class="btn btn-lg btn-primary btn-block" type="submit">Sign in</button>
+    </form>
+
+<!-- d-none -->
+    <form class="form-signin " id="codeForm" > 
+      <div class="text-center mb-4">
+        <h4 class="h4 mb-3 font-weight-normal">  Код подтверждения</h4>
+      </div>
+        <div   id=dangerCode  class="alert alert-danger alert-dismissible fade " role="alert" >
+          <strong>Ошибка!</strong>Код не найден.
+          <button type="button" class="close" data-dismiss="alert" aria-label="Close" id="closeBtn2">
+            <span aria-hidden="true">&times;</span>
+          </button>
+        </div>
+
+  	  <div class="form-label-group">
+        <input type="text" id="code" class="form-control" >
+        <label for="code">Code</label>
+      </div>
+      <button id="checkCode" class="btn btn-lg btn-primary btn-block" type="button">Send code</button>
+	</form>
+  </div>
+  <script language="javascript">
+	var btn = document.getElementById("sigIn");
+	btn.addEventListener("click", checkIn);
+
+  var closeBtn = document.getElementById("closeBtn");
+  closeBtn.addEventListener("click", closeBtnClick);
+  var closeBtn2 = document.getElementById("closeBtn2");
+  closeBtn2.addEventListener("click", closeBtnClick2);
+
+  var  email = document.getElementById("inputEmail").value;
+  var btnCode = document.getElementById("checkCode");
+  btnCode.addEventListener("click", checkCodeClick);
+
+  var dangerEmailElm = document.getElementById("dangerEmail");
+  var dangerCodeElm = document.getElementById("dangerCode");
+  
+  function closeBtnClick(){
+      dangerEmailElm.classList.remove('show');
+  }
+  function closeBtnClick2(){
+      dangerCodeElm.classList.remove('show');
+  }
+
+  function checkCodeClick(){
+    var  email = document.getElementById("inputEmail").value;
+    var  email = document.getElementById("inputEmail").value;
+    var  code = document.getElementById("code").value;
+    let data  = {code: code, email: email};
+    let out = JSON.stringify(data)
+    
+    console.log(out)
+          $.ajax({
+          type: "GET",
+          url: "/checkcode/"+code + "/" + email,
+          data : out,
+          contentType: "application/json",
+          dataType: "json",
+          success: function(data){
+            // codeFormElm.classList.remove("d-none");
+            window.location="/"
+          },
+          error: function(err){
+            dangerCodeElm.classList.add('show');
+            if(err.status == 404){
+              console.log('код не найден');
+              dangerCodeElm.value = "  код не найден";
+            }
+            else {
+              console.log('другая ошибка');
+              console.log(dangerCodeElm.innerText);
+              dangerCodeElm.innerText = "Плохие данные";
+            }
+          }
+      });
+
+  }
+
+	function checkIn(){
+
+    var  pswd = document.getElementById("inputPassword").value;
+    var  username = document.getElementById("inputName").value;
+    var  codeFormElm = document.getElementById("codeForm");
+    var  email = document.getElementById("inputEmail").value;
+
+    dangerEmailElm.classList.remove('show');
+    let data  = {name: username, email: email, pswd:pswd };
+    let out = JSON.stringify(data)
+
+
+    console.log(out)
+          $.ajax({
+          type: "PUT",
+          url: "/sigin",
+          data : out,
+          contentType: "application/json",
+          dataType: "json",
+          success: function(data){
+            codeFormElm.classList.remove("d-none");
+          },
+          error: function(err){
+            if(err.status == 409){
+              console.log('дублирование email');
+              dangerEmailElm.classList.add('show');
+
+            }
+          }
+      });
+
+	}
+  </script>
+</body>
+</html>

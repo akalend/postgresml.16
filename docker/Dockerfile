@@ -77,8 +77,6 @@ COPY pg_hba.conf .
 RUN  sudo gzip -d datasets.dmp.gz 
 VOLUME /usr/local/pgsql/data
 
-
-
 EXPOSE 5432
 
 ENTRYPOINT bash /usr/local/pgsql/docker-ensure.sh 

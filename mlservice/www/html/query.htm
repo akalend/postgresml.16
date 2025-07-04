@@ -3,10 +3,10 @@
 <head>
 	<title>Database console</title>
 	<meta charset="utf-8">
-	<link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0-alpha.6/css/bootstrap.min.css" integrity="sha384-rwoIResjU2yc3z8GV/NPeZWAv56rSmLldC3R/AZzGRnGxQQKnKkoFVhFQhNUwEyJ" crossorigin="anonymous">
+	<link rel="stylesheet" href="bootstrap.min.css" integrity="sha384-rwoIResjU2yc3z8GV/NPeZWAv56rSmLldC3R/AZzGRnGxQQKnKkoFVhFQhNUwEyJ" crossorigin="anonymous">
 	<link href="main.css" rel="stylesheet">
 	<script 
-		src="https://code.jquery.com/jquery-3.6.3.js"
+		src="jquery-3.6.3.js"
 		integrity="sha256-nQLuAZGRRcILA+6dMBOvcRh5Pe310sBpanc6+QBmyVM="
 		crossorigin="anonymous">
 	</script>
@@ -14,25 +14,44 @@
 <body>
 	<div  id="queryForm"  class="container" > 
 		<!-- hidden="true" -->
-  		<div class="form-group">
+		<div class="form-group">
 		<section class="console-reference" >
-	    	<textarea  class="form-control" id="responce" disabled  style="font-family: monospace; height: 300px; "></textarea>
-	  		<button id="queryBtn" type="button" class="btn btn-primary">SEND QUERY</button>
-	    	<label for="query">Query</label>
+			<textarea  class="form-control" id="responce" disabled  style="font-family: monospace; height: 300px; "></textarea>
+			<button id="queryBtn" type="button" class="btn btn-primary">SEND QUERY</button>
+			<label for="query">Query</label>
 			<textarea  class="form-control" style="font-family: monospace;"   id="query" ></textarea>
 			</section>
-  		</div>
+		</div>
 
 	</div>
 	<script language="javascript">
 		var id = window.location.hash.substring(1);
-		console.log( 'id=' + id )
 		var queryForm = document.getElementById("queryForm");
 		var responce = document.getElementById("responce");
 		var queryBtn = document.getElementById("queryBtn");
 		queryBtn.addEventListener("click", sendQuery);
 
 		var query = document.getElementById("query");
+
+		let timerId = setInterval(checkDb, 10000); // 1 min
+
+		function checkDb() {
+			var data = '{"id":"' + id + '"}';
+			$.ajax({
+				  type: "POST",
+				  url: "/checkdb",
+				  data : data,
+				  dataType: "json",
+				  contentType:"application/json",
+				  success: function(data){
+					console.log( data);
+				  },
+				  error: function(err){
+					console.log(err)
+				  }
+			});
+		}
+
 		function runDocker() {
 			console.log("send run");
 			$.ajax({
@@ -40,17 +59,17 @@
 				  url: "/run",
 				  data : '',
 				  success: function(data){
-				  	id = data.id;
+					id = data.id;
 
-				  	console.log( "responce");
-				  	console.log( data);
+					console.log( "responce");
+					console.log( data);
 					queryForm.hidden = false;
-				  	btn.disabled = true;				  	
+					btn.disabled = true;				  	
 				  },
 				  error: function(err){
-				  	console.log(err)
+					console.log(err)
 				  },
-				  dataType: "json"
+				  dataType: "json",
 			});
 		}
 
@@ -63,16 +82,16 @@
 				  url: "/psql",
 				  data : data,
 				  success: function(data){
-				  	console.log(data);
-				  	responce.value = query.value + "\n" +data;
-				 	query.value = ""; 	
+					console.log(data);
+					responce.value = query.value + "\n" +data;
+					query.value = ""; 	
 				  },
 				  error: function(err,code){
-				  	console.log(code)
+					console.log(code)
 				  },
 				  contentType:"application/json",
 				  async: true,
-    			  dataType: "text"
+				  dataType: "text"
 			});
 		}
 
@@ -80,14 +99,31 @@
 			$.ajax({
 				  type: "GET",
 				  url: "/sessions",
+				  headers: {
+					'X-Token': getCookie('token')
+				  },
+				  
 				  success:function(data){
-				  	console.log("sessions" + data.count)
-				  	if (data.count > 3) {
-				  		console.log('disabled')
-				  		btn.disabled = true;
-				  	} 
-				  }
+					console.log("sessions" + data.count)
+					if (data.count > 3) {
+						console.log('disabled')
+						btn.disabled = true;
+					} 
+				  },
+				  error: function(err, textStatus){
+					console.log(err)
+					console.log('code: ' + textStatus + ' status: ' + err.status)
+					if (err.status > 400){
+						window.location.href = '/'
+					}
+				  },
 			});
+		}
+		
+		function getCookie(name) {
+			const value = `; ${document.cookie}`;
+			const parts = value.split(`; ${name}=`);
+			if (parts.length === 2) return parts.pop().split(';').shift();
 		}
 
   sessionCount();
