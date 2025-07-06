@@ -1542,11 +1542,8 @@ static void SendRequest(int32 sid, char *ip)
 		curl_easy_setopt(curl, CURLOPT_URL, URL_REQUEST);
 		curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, "PUT");
 
-
-		
 		appendStringInfo(&buf, "{\"num\":%d, \"ip\":\"%s\"}", sid, ip);
 		
-
 		curl_easy_setopt(curl, CURLOPT_POSTFIELDS, buf.data);
 		
 		struct curl_slist *headers = NULL;
@@ -1571,6 +1568,7 @@ static void SendRequest(int32 sid, char *ip)
 		curl_easy_cleanup(curl);
 	}
 	
+	pfree(buf.data);
 	curl_global_cleanup();
 }
 
@@ -2346,8 +2344,7 @@ void ShowModelExecuteStmt(ShowModelStmt *stmt, DestReceiver *dest)
 		tup = ExecFetchSlotHeapTuple(slot, false, &should_free);
 
 		heap_deform_tuple(tup,  tupdesc, values, nulls);
-		if(should_free) heap_freetuple(tup);
-		elog(WARNING, "args %s", TextDatumGetCString(values[5]));
+		if(should_free) heap_freetuple(tup);		
 		found = true;
 		break;
 	}
@@ -2365,9 +2362,23 @@ void ShowModelExecuteStmt(ShowModelStmt *stmt, DestReceiver *dest)
 	/* prepare for projection of tuples */
 	tstate = begin_tup_output_tupdesc(dest, tupdesc, &TTSOpsVirtual);
 
-	outnulls[0] = true;
-	outnulls[1] = true;
-	outnulls[2] = true;
+
+	// elog(WARNING, "args %s", TextDatumGetCString(values[5]));
+	if (nulls[Anum_ml_model_sid - 1])
+	{	/* sid is null */
+		char* res_out = psprintf("%g", DatumGetFloat4(values[Anum_ml_model_acc - 1]));
+		outvalues[0] = CStringGetTextDatum(res_out);
+		outnulls[1] = false; outvalues[1] = values[Anum_ml_model_args - 1];
+		outnulls[2] = false; outvalues[2] = values[Anum_ml_model_fieldlist - 1];
+	}
+	else
+	{
+		outvalues[0] = CStringGetTextDatum("processed");
+		outnulls[1] = true;
+		outnulls[2] = true;
+	}
+
+	outnulls[0] = false;
 	do_tup_output(tstate, outvalues, outnulls);
 
 	end_tup_output(tstate);

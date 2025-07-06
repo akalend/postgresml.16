@@ -5,11 +5,11 @@
 	<meta charset="utf-8">
 	<link rel="stylesheet" href="/bootstrap.min.css" integrity="sha384-rwoIResjU2yc3z8GV/NPeZWAv56rSmLldC3R/AZzGRnGxQQKnKkoFVhFQhNUwEyJ" crossorigin="anonymous">
 	<link href="main.css" rel="stylesheet">
-    <!-- Bootstrap core CSS -->
-    <link href="bootstrap.min.css" rel="stylesheet">
+		<!-- Bootstrap core CSS -->
+		<link href="bootstrap.min.css" rel="stylesheet">
 
-    <!-- Custom styles for this template -->
-    <link href="floating-labels.css" rel="stylesheet">
+		<!-- Custom styles for this template -->
+		<link href="floating-labels.css" rel="stylesheet">
 
 
 	<script 
@@ -19,78 +19,106 @@
 	</script>
 </head>
 <body>
-  <div >
-    <form class="form-signin" >
-      <div class="text-center mb-4">
-        <h1 class="h3 mb-3 font-weight-normal">Вход</h1>
-      </div>
-        <div   id="dangerPassord"  class="alert alert-danger alert-dismissible fade " role="alert" >
-          <strong>Ошибка!</strong>  Не правильный логин или пароль
-          <button type="button" class="close" data-dismiss="alert" aria-label="Close" id="closeBtn">
-            <span aria-hidden="true">&times;</span>
-          </button>
-        </div>
-      <div class="form-label-group">
-        <input type="email" id="inputEmail" class="form-control" placeholder="Email address" required autofocus>
-        <label for="inputEmail">Email address</label>
-      </div>
+	<div >
+		<form class="form-signin" >
+			<div class="text-center mb-4">
+				<h1 class="h3 mb-3 font-weight-normal">Вход</h1>
+			</div>
+				<div   id="dangerPassord"  class="alert alert-danger alert-dismissible fade " role="alert" >
+					<strong>Ошибка!</strong>  Не правильный логин или пароль
+					<button type="button" class="close" data-dismiss="alert" aria-label="Close" id="closeBtn">
+						<span aria-hidden="true">&times;</span>
+					</button>
+				</div>
+			<div id="form">
+				<div class="form-label-group">
+					<input type="email" id="inputEmail" class="form-control" placeholder="Email address" required autofocus>
+					<label for="inputEmail">Email address</label>
+				</div>
 
-      <div class="form-label-group ">
-        <input type="password" id="inputPassword" class="form-control" placeholder="Password" required>
-        <label for="inputPassword">Password</label>
-        <!-- <div class="valid-feedback"> -->
-      </div>
+				<div class="form-label-group ">
+					<input type="password" id="inputPassword" class="form-control" placeholder="Password" required>
+					<label for="inputPassword">Password</label>
+					<!-- <div class="valid-feedback"> -->
+				</div>
 
-      <button id="sigIn" class="btn btn-lg btn-primary btn-block" type="submit">Sign in</button>
-    </form>
+				<button id="sigIn" class="btn btn-lg btn-primary btn-block" type="submit">Sign in</button>
+			</div>
+		</form>
 
-  <script language="javascript">
+	<script language="javascript">
 	var btn = document.getElementById("sigIn");
 	btn.addEventListener("click", checkIn);
-  var dangerPassordElm = document.getElementById("dangerPassord");
+	var dangerPassordElm = document.getElementById("dangerPassord");
 
-  function closeBtnClick(){
-      dangerPassordElm.classList.remove('show');
-  }
+	function closeBtnClick(){
+			dangerPassordElm.classList.remove('show');
+	}
 
-  function checkCodeClick(){
-    var  email = document.getElementById("inputEmail").value;
-    var  code = document.getElementById("code").value;
-    let data  = {code: code, email: email};
-    let out = JSON.stringify(data)
-    
-  }
+	function checkCodeClick(){
+		var  email = document.getElementById("inputEmail").value;
+		var  code = document.getElementById("code").value;
+		let data  = {code: code, email: email};
+		let out = JSON.stringify(data)
+		
+	}
+
+	function sessionCount() {
+		$.ajax({
+			type: "GET",
+			url: "/sessions",
+			success:function(data){
+				console.log("sessions: " + data.count)
+				if (data.count > 5) {
+					console.log('disabled')
+					let form = document.getElementById("form");
+					form.hidden = true;
+					dangerPassordElm.classList.add('show');
+					dangerPassordElm.innerText = "нет свободных слотов";
+				} 
+			}
+		});
+	}
 
 	function checkIn(){
 
-    var  pswd = document.getElementById("inputPassword").value;
-    var  email = document.getElementById("inputEmail").value;
+		var  pswd = document.getElementById("inputPassword").value;
+		var  email = document.getElementById("inputEmail").value;
 
-    dangerPassordElm.classList.remove('show');
-    let data  = {email: email, pswd:pswd, name:"" };
-    let out = JSON.stringify(data)
+		dangerPassordElm.classList.remove('show');
+		let data  = {email: email, pswd:pswd, name:"" };
+		let out = JSON.stringify(data)
 
-    console.log(out)
-          $.ajax({
-          type: "POST",
-          url: "/sigout",
-          data : out,
-          contentType: "application/json",
-          dataType: "json",
-          success: function(data,status,request){
-            console.log(data)
-            token = request.getResponseHeader('X-Token');
-            window.location.href = '/start/' + token
-          },
-          error: function(err){
-            if(err.status == 404){
-              console.log('не найден');
-              dangerPassordElm.classList.add('show');
-            }
-          }
-      });
+		console.log(out)
+					$.ajax({
+					type: "POST",
+					url: "/sigout",
+					data : out,
+					contentType: "application/json",
+					dataType: "json",
+					success: function(data,status,request){
+						token = request.getResponseHeader('X-Token');
+						console.log(data);
+						console.log('token:'+token);
+						if(data == 'Ok') {						
+							console.log('redirect');
+							window.location.href = '/start/' + token;
+						} else {
+							window.location.href = data;
+						}
+
+					},
+					error: function(err){
+						if(err.status == 404){
+							console.log('не найден');
+							dangerPassordElm.classList.add('show');
+						}
+					}
+			});
 
 	}
-  </script>
+	// checkBack();
+	sessionCount();
+	</script>
 </body>
 </html>

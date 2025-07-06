@@ -3,30 +3,31 @@ from fastapi import FastAPI, Request, Response
 from fastapi.responses import RedirectResponse, PlainTextResponse
 from fastapi import HTTPException, Depends, status, Header, HTTPException
 from fastapi.security import OAuth2PasswordBearer
-
+from datetime import datetime as dt
+from asgiref.sync import async_to_sync
 from starlette.responses import JSONResponse
 from pydantic import BaseModel
 from hashlib  import md5
 import asyncio, os
 from time import sleep, time
 import datetime, subprocess
-import redis
 import docker
 import jwt
+import json
 import psycopg2
 import random
+import redis
 
 from passlib.context import CryptContext
 
-# Secret key for signing JWT tokens. We'll provide example including secret key rotation below.
-SECRET_KEY = "AZ03;"
+
 
 # Expire session time in sec
 EXPIRE_SESSION = 100
 
-# Algorithm used for JWT token encoding
 ALGORITHM = "HS256"
-SALT_PSW="23.xZ%"
+SECRET_KEY = os.getenv('SECRET_KEY', 'AZ03')
+SALT_PSW = os.getenv('SALT_PSW', '23.xZ%')
 
 db_params = {
 	"dbname": "users",
@@ -38,7 +39,7 @@ db_params = {
 
 app = FastAPI()
 
-class Indata(BaseModel):
+class JobItem(BaseModel):
 	num: int
 	ip: str
 
@@ -80,7 +81,7 @@ def verify_token(req: Request):
 									detail="Invalid authentication credentials 2")
 			ts: int = payload.get("time")
 
-			if time()-ts > 600:
+			if time()-ts > 3600:
 				raise HTTPException(status_code=419, 
 					detail="Timeout Authentification")
 		except Exception as e:
@@ -89,12 +90,26 @@ def verify_token(req: Request):
 								detail="Invalid authentication credentials 3")
 		return True
 
+def get_data_from_token(token):
+	id = None
+	ts = 0
+
+	try:
+		payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+		id: str = payload.get("email")
+		ts: int = payload.get("time")
+	except:
+		pass
+	return (id, ts)
+
+
 
 def checkUser(email, pswd):
 	try:
 		conn = psycopg2.connect(**db_params)
 		cur = conn.cursor()
 
+		print(pswd, email)
 		sql = """
 		SELECT  count(user) FROM users
 			WHERE password=%s AND email=%s
@@ -124,10 +139,11 @@ def setkey(id):
 
 
 @app.put("/ml", status_code=202)
-async def create_model(indata: Indata):
-	print('new request',indata)
+async def create_model(jobItem: JobItem):
+	print('new request',jobItem)
 	r = redis.Redis(host='127.0.0.1')
-	out = "{}:{}".format( indata.ip, indata.num) 
+	out = "{}:{}".format( jobItem.ip, jobItem.num)
+	print(out)
 	r.rpush('mlkey', out)
 	r.quit()
 	return None
@@ -164,20 +180,50 @@ async def checkCode(response: Response, code: str, email: str):
 	closeDb(conn, cur)
 	return 'Ok'
 
-
 @app.post("/sigout")
-async def sigout(response: Response, user: User):
+async def sigout(request: Request, response: Response):
 
-	md5_text = md5((SALT_PSW + user.pswd).encode('utf-8'));
-	response.status_code = checkUser(user.email, md5_text.hexdigest());
+	body = await request.body()
+	data = json.loads(body.decode('utf-8'))
+	db = request.cookies.get('db')
+	token = request.cookies.get('token')
 
-	token = create_access_token({"email": user.email , "time": time()})
+	if (db is not None) and (token is not None):		
+		user,ts = get_data_from_token(token)
+		print(1, user,data['email'],ts, db)
+		if data['email'] == user:
+			print(data['email'], user)
+			client = docker.from_env()
+			try:
+				# Получаем контейнер по ID
+				container = client.containers.get(db)
+				print('2 container Ok', container)
+				print('3 time:', ts + 3600 > time())
+				print('3.5 user:', user)
+
+				if container is not None:
+					if user is not None and ts + 3600 > time():
+						print('4 Ok', "/query.htm#" + db)
+						response.headers["X-Token"] = token
+						return  ("/query.htm#" + db)
+			except:
+				print('except')
+					# pass
+
+
+
+	md5_text = md5((SALT_PSW + data['pswd']).encode('utf-8'));
+	response.status_code = checkUser(data['email'], md5_text.hexdigest());
+
+	token = create_access_token({"email": data['email'] , "time": time()})
+
 	response.headers["X-Token"] = token
 
 	return 'Ok'
 
 @app.get("/start/{token}", response_class=RedirectResponse)
 async def start(token: str):
+	attrs = None
 	try:
 		payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
 		print('jwt',payload)
@@ -186,19 +232,44 @@ async def start(token: str):
 			raise HTTPException(status_code=401, detail="Invalid authentication credentials")
 		ts: int = payload.get("time")
 
-		# if time()-ts > 60:
-		# 	raise HTTPException(status_code=419, detail="Timeout Authentification")
+		if time()-ts > 60:		# проверка валидности токена
+			raise HTTPException(status_code=419, detail="Timeout Authentification")
 	except Exception as e:
 		raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
-	response = RedirectResponse(url="/get.htm")
-	response.set_cookie(key="token", value=token)
-	response.status_code = status.HTTP_302_FOUND
+	client = docker.from_env()
+	response = Response()
+	try:
+		container = client.containers.run("selectel",'', detach=True, auto_remove=True)
+		attrs = container.attrs
+		key = attrs['Id'][0:6]
+
+		setkey(key)
+
+	except docker.errors.ImageNotFound as e:
+		response.status_code = status.HTTP_404_NOT_FOUND
+		return {"error":"image not found"}
+	except docker.errors.APIError as e:
+		response.status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
+		return {"error":"internal"}
+
+
+	if attrs is None:
+		print("Error db is none")
+
+	response = RedirectResponse("/query.htm#" + attrs['Id'][0:6] )
+	attrs = container.attrs
+	
+	response.set_cookie(key="db", value=attrs['Id'][0:6], secure=False)
+	token = create_access_token({"email": user , "time": time()})
+	response.set_cookie(key="token", value=token , secure=False)
+	
 	return response
 
 
+
 @app.post("/checkdb")
-async def checkdb(id: Id):
+async def setActiveDb(id: Id):
 	setkey(id.id)
 	return 'Ok'
 	
@@ -233,13 +304,33 @@ async def sigin(response: Response, user: User):
 
 
 	closeDb(conn, cur)
-# 	print('new request',user)
 	return 'Ok'
+
+@app.get("/parsetoken/{token}")
+async def parseToken(token: str):
+	try:
+		payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+		print('jwt',payload)
+		user: str = payload.get("email")
+		if user is None:
+			raise HTTPException(status_code=401, detail="Invalid authentication credentials")
+		ts: int = payload.get("time")
+
+		# if time()-ts > 60:
+		# 	raise HTTPException(status_code=419, detail="Timeout Authentification")
+	except Exception as e:
+		raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+
+	dt_obj = dt.fromtimestamp(ts)
+
+	return {"user":user, "expire":dt_obj.strftime("%H:%M:%S")}
+
 
 
 @app.post("/psql")
 async def query(query: Query):
 
+	# проверить токен
 	client = docker.from_env()
 	try:
 		# Получаем контейнер по ID
@@ -272,6 +363,28 @@ async def query(query: Query):
 	print('запрос выполнен')
 	return PlainTextResponse(out)
 
+@app.post("/token")
+async def checkDb(id: Id):
+	print('id', id.id)
+	client = docker.from_env()
+	try:
+		container = client.containers.get(id.id)
+		if container is None:
+			raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+								detail="Db Not Found")
+	except docker.errors.NotFound:
+		raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+								detail="Db Not Found")
+	except docker.errors.APIError as e:
+		raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+							detail=str(e))
+	except Exception as e:
+		raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+							detail=str(e))
+	
+	return 'Ok'
+
+# кандидат на удаление
 @app.get("/run", response_class= RedirectResponse)
 async def start():
 	client = docker.from_env()
@@ -294,19 +407,15 @@ async def start():
 	response = RedirectResponse("/query.htm#" + attrs['Id'][0:6] )
 	attrs = container.attrs
 	
-	response.set_cookie(key="id", value=attrs['Id'][0:6], max_age=3600, secure=False, httponly=True)
+	response.set_cookie(key="db", value=attrs['Id'][0:6], secure=False)
 	
 	return response
 # status_code=307
 
 
-
 @app.get("/sessions")
-async def sessions( authorized: bool = Depends(verify_token)):
+async def sessions():
 
-	print('authorized', authorized)
-	# if not authorized:
-	# 	return {"count":10 }
 	client = docker.from_env()
 
 	containers = client.containers.list()

@@ -15,6 +15,7 @@ class Model:
 
 	def __init__(self, ip):
 		cnn_str="dbname=postgres user=postgres host={}".format(ip)
+		# cnn_str="dbname=postgres user=postgres host=127.0.0.1 dbname=test"
 		print(cnn_str)
 		self.cnn = psycopg.connect(cnn_str)
 		self.query = ''
@@ -23,7 +24,6 @@ class Model:
 		self.field = {}
 		self.ip = ip
 		self.log("start\n")
-		print(self.cnn)
 
 	def log(self, text):
 		print(text)
@@ -32,19 +32,22 @@ class Model:
 		# 	f.write(text)
 
 	def toStr(self, field,num):
-		print('toStr',num, type(field[num]))
-		if type(field[num]) == 'str':
-			self.field[num] = field[num];
+		if type(field[num]) == type('a') or type(field[num]) == type(1):
+			self.field[num] = field[num]
 		else:
-			self.field[num] = field[num].decode('ascii');
+			self.field[num] = field[num].decode('ascii')
 
 	def getQuery(self, numder):
 		self.numder = numder
-		self.log("getQuery\n")
+		self.log("start getQuery\n")
 		with self.cnn.cursor() as cur:
 			cur.execute("SELECT query, args,name,model_type FROM ml_model WHERE sid=%s", [numder])
-			row = cur.fetchone();			
-			if row is not None:
+			row = cur.fetchone();
+			print('meta',row)
+			if row is  None:
+				self.log("getQuery row=None\n")
+				return False
+			else:
 				self.toStr(row,0)
 				self.toStr(row,1)
 				self.toStr(row,2)
@@ -56,11 +59,8 @@ class Model:
 				self.type = self.field[3]
 				self.log("getQuery result: Ok\n")
 				return True
-			else:
-				self.log("getQuery result:False\n")
-				return False
 
-		self.log("False\n")
+		self.log("cursor is False\n")
 		return False
 
 	def getData(self):

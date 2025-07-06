@@ -11,14 +11,13 @@
 		crossorigin="anonymous">
 	</script>
 </head>
-<body>
-	<div  id="queryForm"  class="container" > 
+<body onLoad="noBack();" onpageshow="if (event.persisted) noBack();" onUnload="">
+	<div  id="queryForm"  class="container-xxl" > 
 		<!-- hidden="true" -->
 		<div class="form-group">
 		<section class="console-reference" >
-			<textarea  class="form-control" id="responce" disabled  style="font-family: monospace; height: 300px; "></textarea>
-			<button id="queryBtn" type="button" class="btn btn-primary">SEND QUERY</button>
-			<label for="query">Query</label>
+			<textarea  class="form-control" id="responce" disabled  style="font-family: monospace; height: 600px; "></textarea>
+			<button id="queryBtn" type="button" class="btn btn-primary">SEND QUERY</button>			
 			<textarea  class="form-control" style="font-family: monospace;"   id="query" ></textarea>
 			</section>
 		</div>
@@ -35,6 +34,11 @@
 
 		let timerId = setInterval(checkDb, 10000); // 1 min
 
+		window.history.forward();
+		function noBack()
+		{
+			window.history.forward();
+		}
 		function checkDb() {
 			var data = '{"id":"' + id + '"}';
 			$.ajax({
@@ -63,8 +67,7 @@
 
 					console.log( "responce");
 					console.log( data);
-					queryForm.hidden = false;
-					btn.disabled = true;				  	
+					queryForm.hidden = false;	  	
 				  },
 				  error: function(err){
 					console.log(err)
@@ -94,39 +97,12 @@
 				  dataType: "text"
 			});
 		}
-
-		function sessionCount() {
-			$.ajax({
-				  type: "GET",
-				  url: "/sessions",
-				  headers: {
-					'X-Token': getCookie('token')
-				  },
-				  
-				  success:function(data){
-					console.log("sessions" + data.count)
-					if (data.count > 3) {
-						console.log('disabled')
-						btn.disabled = true;
-					} 
-				  },
-				  error: function(err, textStatus){
-					console.log(err)
-					console.log('code: ' + textStatus + ' status: ' + err.status)
-					if (err.status > 400){
-						window.location.href = '/'
-					}
-				  },
-			});
-		}
 		
 		function getCookie(name) {
 			const value = `; ${document.cookie}`;
 			const parts = value.split(`; ${name}=`);
 			if (parts.length === 2) return parts.pop().split(';').shift();
 		}
-
-  sessionCount();
 
 	</script>
 
