@@ -1,11 +1,12 @@
 from typing import Union
-from fastapi import FastAPI, Request, Response
+from fastapi import FastAPI, Request, Response, UploadFile, File
 from fastapi.responses import RedirectResponse, PlainTextResponse
 from fastapi import HTTPException, Depends, status, Header, HTTPException
 from fastapi.security import OAuth2PasswordBearer
 from datetime import datetime as dt
 from asgiref.sync import async_to_sync
 from starlette.responses import JSONResponse
+from passlib.context import CryptContext
 from pydantic import BaseModel
 from hashlib  import md5
 import asyncio, os
@@ -17,8 +18,7 @@ import json
 import psycopg2
 import random
 import redis
-
-from passlib.context import CryptContext
+import shutil
 
 
 
@@ -221,6 +221,14 @@ async def sigout(request: Request, response: Response):
 
 	return 'Ok'
 
+
+@app.post("/upload")
+async def create_upload_file(file: UploadFile = File(...)):
+    file_location = f"/tmp/sql/{file.filename}"
+    with open(file_location, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+    return {"info": f"file '{file.filename}' saved at '{file_location}'"}
+
 @app.get("/start/{token}", response_class=RedirectResponse)
 async def start(token: str):
 	attrs = None
@@ -240,7 +248,15 @@ async def start(token: str):
 	client = docker.from_env()
 	response = Response()
 	try:
-		container = client.containers.run("selectel",'', detach=True, auto_remove=True)
+		container = client.containers.run("selectel",'', 
+			volumes={
+			'/tmp/sql': { 
+				'bind': '/usr/local/pgsql/upload',  # путь в контейнере
+				'mode': 'rw'  # режим доступа (чтение/запись)
+				}
+			},
+			detach=True,
+			auto_remove=True)
 		attrs = container.attrs
 		key = attrs['Id'][0:6]
 

@@ -75,7 +75,6 @@ COPY datasets.dmp.gz .
 COPY postgresql.conf .
 COPY pg_hba.conf .
 RUN  sudo gzip -d datasets.dmp.gz 
-VOLUME /usr/local/pgsql/data
 
 EXPOSE 5432
 

@@ -11,34 +11,35 @@
 		crossorigin="anonymous">
 	</script>
 </head>
-<body onLoad="noBack();" onpageshow="if (event.persisted) noBack();" onUnload="">
+<body onUnload="">
 	<div  id="queryForm"  class="container-xxl" > 
 		<!-- hidden="true" -->
 		<div class="form-group">
 		<section class="console-reference" >
-			<textarea  class="form-control" id="responce" disabled  style="font-family: monospace; height: 600px; "></textarea>
-			<button id="queryBtn" type="button" class="btn btn-primary">SEND QUERY</button>			
+			<textarea  class="form-control" id="responce" disabled  style="font-family: monospace; height: 300px; "></textarea>
+			<button id="queryBtn" type="button" class="btn btn-primary">SEND QUERY</button>
 			<textarea  class="form-control" style="font-family: monospace;"   id="query" ></textarea>
 			</section>
 		</div>
-
+	</div>
+	<div class="mb-3">
+	  <label for="formFile" class="form-label">Загрузите файл</label>
+	  <input class="form-control" type="file" id="formFile">
+	  <button id="uploadBtn" type="button" class="btn btn-primary">UPLOAD FILE</button>
+	  <div id="status"></div>
 	</div>
 	<script language="javascript">
 		var id = window.location.hash.substring(1);
 		var queryForm = document.getElementById("queryForm");
 		var responce = document.getElementById("responce");
 		var queryBtn = document.getElementById("queryBtn");
+		var uploadBtn = document.getElementById("uploadBtn");
 		queryBtn.addEventListener("click", sendQuery);
+		uploadBtn.addEventListener("click", uploadQuery);
 
 		var query = document.getElementById("query");
-
 		let timerId = setInterval(checkDb, 10000); // 1 min
 
-		window.history.forward();
-		function noBack()
-		{
-			window.history.forward();
-		}
 		function checkDb() {
 			var data = '{"id":"' + id + '"}';
 			$.ajax({
@@ -76,8 +77,39 @@
 			});
 		}
 
-		function sendQuery() {
+		function uploadQuery() {
+			var fileInput = document.getElementById("formFile");
 			console.log("send run");
+			if (fileInput.files.length === 0) {
+				$('#status').text('Please select a file first.');
+				return;
+			}
+			var file = fileInput.files[0];
+			var formData = new FormData();
+			formData.append('file', file);
+
+			$('#status').text('Uploading...');
+			console.log(formData);
+			$.ajax({
+			  type: "POST",
+			  url: "/upload",
+			  data: formData,
+			  processData: false,
+			  contentType: false,
+			  success: function(data){
+				console.log(data);
+				$('#status').text('Upload Ok');
+			  },
+			  error: function(xhr, status, error){
+				$('#status').text('Uploading is error:' + error);
+				console.log('error code' +status)
+			  },
+			  async: true
+			});
+		}
+
+		function sendQuery() {
+			console.log("upload");
 			var data = '{ "query":"' + query.value + '","id":"' + id + '"}';
 			console.log(data)
 			$.ajax({
@@ -97,7 +129,7 @@
 				  dataType: "text"
 			});
 		}
-		
+
 		function getCookie(name) {
 			const value = `; ${document.cookie}`;
 			const parts = value.split(`; ${name}=`);
