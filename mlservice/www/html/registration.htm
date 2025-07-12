@@ -10,6 +10,10 @@
 
     <!-- Custom styles for this template -->
     <link href="floating-labels.css" rel="stylesheet">
+  <script src="/bootstrap.min.js" 
+    integrity="sha384-QJHtvGhmr9XOIpI6YVutG+2QOK9T+ZnN4kzFN1RtK3zEFEIsxhlmWl5/YESvpZ13" 
+    crossorigin="anonymous">
+  </script>
 
 
 	<script 
@@ -19,6 +23,32 @@
 	</script>
 </head>
 <body>
+  <!-- Модальное окно -->
+<div class="modal fade" id="InfoModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Пользовательское соглашение</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <ul>
+        <div>Нажимая кнопку <strong>"Согласен"</strong> Вы соглашаетесь с  тем, что:</div>
+        <li>Сервис носит не коммерческий характер и предоставлят услуги ознакомительного характера, в целях их дальнейшего совершенствования;
+        <li>Для реализации сервиса спонсором SELECTEL предоставлен сервер, возможности которого позволяют иметь пять одновременно открытых сессий, по этому, вы соглашаетесь с тем, что какое-то время сервис может быть не доступен;
+        <li>Время ограничения работы одной сессии 60 минут, после чего Вам предстоит повторить авторизацию. Что бы данные не потерять данные, необходима повторная авторизация в течении 3-х минут;
+        <li>Сервис не предназначен для хранения данных и они сохраняются, только на периуд жизни сессии, т.е. пока будет открыто окно браузера;
+        <li>Сервис носит исследовательский характер, т.е. понять интересы и нужды специалтстов по Data Since, в связи с этим возможны просьбы от разработчиков не чаще одного раз в месяц пройти анкетирование;
+        <li>Сервис гарантирует сохранность персональных данных и ваш email не буде использован для рекламных рассылок.
+          </ul>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-primary" data-bs-dismiss="modal" onclick="closeModel()">Согласен</button>
+      </div>
+    </div>
+  </div>
+</div>
+
   <div >
     <form class="form-signin" >
       <div class="text-center mb-4">
@@ -37,6 +67,9 @@
       <div class="form-label-group">
         <input type="email" id="inputEmail" class="form-control" placeholder="Email address" required autofocus>
         <label for="inputEmail">Email address</label>
+      </div>
+      <div class="form-label-group">
+        <textarea  id="inputInfo" class="form-control" placeholder="Расскажите кратко о своих интересах, укажите контакты для связи"></textarea>
       </div>
 
       <div class="form-label-group ">
@@ -70,6 +103,9 @@
   <script language="javascript">
 	var btn = document.getElementById("sigIn");
 	btn.addEventListener("click", checkIn);
+
+  let InfoModal = new bootstrap.Modal(document.getElementById('InfoModal'), {});
+  InfoModal.show();
 
   var closeBtn = document.getElementById("closeBtn");
   closeBtn.addEventListener("click", closeBtnClick);
@@ -134,8 +170,7 @@
     dangerEmailElm.classList.remove('show');
     let data  = {name: username, email: email, pswd:pswd };
     let out = JSON.stringify(data)
-
-
+    
     console.log(out)
           $.ajax({
           type: "PUT",
